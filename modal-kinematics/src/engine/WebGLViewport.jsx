@@ -10,6 +10,11 @@ export default function WebGLViewport({ geometryData, engine }) {
     const geometryRef = useRef(null);
     const restPositionsRef = useRef(null);
     
+    // Raycasting & Selection state
+    const selectedNodeRef = useRef(null);
+    const highlightMeshRef = useRef(null);
+    const [selectedNodeInfo, setSelectedNodeInfo] = useState(null);
+
     // Playback state
     const playbackStateRef = useRef('stopped'); // 'stopped' | 'playing' | 'paused'
     const simTimeRef = useRef(0);
@@ -68,6 +73,23 @@ export default function WebGLViewport({ geometryData, engine }) {
         // Ensure pointer events are not intercepted by the browser's touch/scroll handler.
         // OrbitControls requires raw pointer events without browser gesture interference.
         renderer.domElement.style.touchAction = 'none';
+
+        // 1b. Raycaster setup
+        const raycaster = new THREE.Raycaster();
+        raycaster.params.Points.threshold = 0.1; // Hit detection radius for point cloud
+        const mouse = new THREE.Vector2();
+
+        // 1c. Highlight mesh setup
+        const highlightGeometry = new THREE.SphereGeometry(0.08, 16, 16);
+        const highlightMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0x00ff88,  // Bright green
+            transparent: true,
+            opacity: 0.8
+        });
+        const highlightMesh = new THREE.Mesh(highlightGeometry, highlightMaterial);
+        highlightMesh.visible = false;
+        scene.add(highlightMesh);
+        highlightMeshRef.current = highlightMesh;
 
         // 2. Add Lighting Controls [cite: 203]
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
@@ -148,6 +170,68 @@ export default function WebGLViewport({ geometryData, engine }) {
         // based on the new target BEFORE the first frame renders.
         controls.update();
         
+        // 6b. Implement the click handler for node selection
+        const handleNodeClick = (event) => {
+            // Only react to left clicks
+            if (event.button !== 0) return;
+            
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObject(pointsMesh);
+            
+            if (intersects.length > 0) {
+                const hit = intersects[0];
+                const vertexIndex = hit.index; 
+                
+                const nodeId = geometryData.nodes ? geometryData.nodes[vertexIndex] : vertexIndex;
+                
+                // Account for DOF mapping: vertex index * dofsPerNode
+                const dofsPerNode = engine ? (engine.totalDofs / engine.numNodes) : 1;
+                const dofIndex = dofsPerNode === 1 ? vertexIndex : vertexIndex * 3;
+                
+                // Update highlight sphere position
+                const posArray = geometryRef.current.attributes.position.array;
+                highlightMesh.position.set(
+                    posArray[vertexIndex * 3],
+                    posArray[vertexIndex * 3 + 1],
+                    posArray[vertexIndex * 3 + 2]
+                );
+                highlightMesh.visible = true;
+                
+                // Store selected node info
+                selectedNodeRef.current = { vertexIndex, nodeId, dofIndex };
+                setSelectedNodeInfo({ vertexIndex, nodeId, dofIndex });
+            } else {
+                highlightMesh.visible = false;
+                selectedNodeRef.current = null;
+                setSelectedNodeInfo(null);
+            }
+        };
+
+        // Differentiate click vs drag
+        let pointerDownPos = { x: 0, y: 0 };
+        
+        const onPointerDown = (e) => {
+            pointerDownPos = { x: e.clientX, y: e.clientY };
+        };
+        
+        const onPointerUp = (e) => {
+            const dx = e.clientX - pointerDownPos.x;
+            const dy = e.clientY - pointerDownPos.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            
+            // Only treat as a click if mouse moved less than 3 pixels
+            if (dist < 3) {
+                handleNodeClick(e);
+            }
+        };
+
+        renderer.domElement.addEventListener('pointerdown', onPointerDown);
+        renderer.domElement.addEventListener('pointerup', onPointerUp);
+
         // 7. The render loop
         let animationFrameId;
         const animate = (timestamp) => {
@@ -221,6 +305,18 @@ export default function WebGLViewport({ geometryData, engine }) {
             }
 
             controls.update(); // Required for damping
+
+            // Track highlight mesh to selected node right before render
+            if (selectedNodeRef.current && highlightMesh.visible && geometryRef.current) {
+                const idx = selectedNodeRef.current.vertexIndex;
+                const posArray = geometryRef.current.attributes.position.array;
+                highlightMesh.position.set(
+                    posArray[idx * 3],
+                    posArray[idx * 3 + 1],
+                    posArray[idx * 3 + 2]
+                );
+            }
+
             renderer.render(scene, camera);
         };
         requestAnimationFrame(animate);
@@ -238,10 +334,14 @@ export default function WebGLViewport({ geometryData, engine }) {
         // 9. Cleanup on unmount
         return () => {
             window.removeEventListener('resize', handleResize);
+            renderer.domElement.removeEventListener('pointerdown', onPointerDown);
+            renderer.domElement.removeEventListener('pointerup', onPointerUp);
             cancelAnimationFrame(animationFrameId);
             controls.dispose();
             geometry.dispose();
             material.dispose();
+            highlightGeometry.dispose();
+            highlightMaterial.dispose();
             renderer.dispose();
             // Safe DOM removal — check that the canvas is still a child of mount
             const mount = mountRef.current;
@@ -252,6 +352,12 @@ export default function WebGLViewport({ geometryData, engine }) {
             }
         };
     }, [geometryData, engine]);
+
+    const handleClearSelection = () => {
+        selectedNodeRef.current = null;
+        setSelectedNodeInfo(null);
+        if (highlightMeshRef.current) highlightMeshRef.current.visible = false;
+    };
 
     const handlePlay = () => {
         playbackStateRef.current = 'playing';
@@ -415,6 +521,13 @@ export default function WebGLViewport({ geometryData, engine }) {
                     style={{ flexGrow: 1 }}
                 />
                 <span ref={timeDisplayRef} style={{ width: '80px', fontFamily: 'monospace' }}>t = 0.000s</span>
+                
+                {selectedNodeInfo && (
+                    <div style={{ padding: '4px 8px', fontSize: '12px', color: '#00ff88', fontFamily: 'monospace', border: '1px solid #00ff88', borderRadius: '4px', marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
+                        Selected: Node {selectedNodeInfo.nodeId} (DOF {selectedNodeInfo.dofIndex})
+                        <button onClick={handleClearSelection} style={{ marginLeft: '8px', fontSize: '11px', cursor: 'pointer', background: 'transparent', color: '#00ff88', border: 'none' }}>✕</button>
+                    </div>
+                )}
             </div>
 
             {engine && (

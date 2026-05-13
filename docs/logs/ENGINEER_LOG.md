@@ -114,3 +114,17 @@ Awaiting first work order from Director for Phase 3 implementation.
 **Notes:** Maintained real-time 60 FPS performance by keeping exaggeration scale decoupled from React render loops via `useRef`. State changes like applying new Initial Conditions cleanly reset the simulation timeline to zero and pause the animation.
 
 ---
+
+### 2026-05-12 — FEAT-P4-001: Raycasting & Node Selection
+
+**Task:** Feature  
+**Work Order From:** Director  
+**Spec From:** `docs/feats/FEAT-P4-001_RAYCASTING.md`  
+**Files Modified:**
+- `src/engine/WebGLViewport.jsx` — Added `THREE.Raycaster` setup and `pointerdown`/`pointerup` handlers to distinguish node clicks from orbit drags (3px threshold). Added a green sphere highlight mesh that updates its position during the `requestAnimationFrame` loop. Hooked selected node details into state to display an info badge with `nodeId` and `dofIndex`.
+
+**Build Status:** ✅ Passes (`npm run build` completed successfully)  
+**Tests:** Built app successfully.
+**Notes:** Computed `dofIndex` dynamically based on `engine.totalDofs / engine.numNodes` to future-proof 1-DOF vs 3-DOF per node geometries. Kept performance high by tracking highlight mesh coordinates directly alongside vertex updates in the animate loop rather than via React state.
+
+---
