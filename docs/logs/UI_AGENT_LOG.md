@@ -52,3 +52,31 @@ Each entry should follow this structure:
 Awaiting work order from Director to begin production UI build-out.
 
 ---
+
+### 2026-05-13 — UX/UI Overhaul Work Order Received
+
+**Type:** Design System / Layout  
+**Scope:** Project-wide  
+**Details:** Director issued UI/UX overhaul sprint plan with 5 feature files. UI Agent assigned as **owner** for FEAT-UI-001 (Design System & Global Styles) and **supporting agent** for FEAT-UI-002, UI-003, and UI-004.
+
+**FEAT-UI-001 scope (owned):**
+- Replace Vite boilerplate in `index.css` and `App.css`
+- Establish dark engineering-grade palette (`#0d0f14` base, `#00e5ff` accent)
+- Import Google Font `Inter`
+- Define CSS custom properties (colors, blur, radii, transitions)
+- Create `.glass-panel` and `.glass-panel-accent` utility classes
+- Build keyframe animations (`dash-march`, `fade-in`, `pulse-glow`)
+- Dark-themed scrollbar styling
+- Full-viewport `#root` reset
+
+**Supporting responsibilities (UI-002 through UI-004):**
+- Landing page visual design (drag-and-drop zone, styled file picker, mapping table restyle)
+- Toolbar and AnimationControls glassmorphic styling
+- ContextMenu and PlotWindow glassmorphic styling, drag handle design
+
+**Design Rationale:** The user's mockup establishes a dark, immersive FEA aesthetic with cyan accents. All UI components will use frosted-glass (glassmorphism) panels over the 3D viewport. The colormap (Jet/Rainbow) must remain visually dominant — UI accent colors chosen to avoid conflict.
+
+**Status:** Ready to begin. Awaiting go-ahead to implement FEAT-UI-001.
+
+---
+

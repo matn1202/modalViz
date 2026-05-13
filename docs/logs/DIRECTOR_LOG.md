@@ -223,3 +223,37 @@ Three new feature specs were generated:
 **Rationale:** The engine is now completely generalized to handle arbitrary structural topologies. The backend engineering is finished. All that remains for the project is UI/UX and State Management.
 
 ---
+
+### 2026-05-13 — UX/UI Overhaul Planning: Decomposition & Work Orders
+
+**Action:** Sprint Plan  
+**Details:** Decomposed the UX/UI Overhaul into 5 structured feature files based on user mockup review and the `implementation_plan.md` specifications. Audited all feature files for compliance, found and closed gaps in prop interfaces, data flow patterns, browser context menu suppression, buffer lifecycle, and dependency declarations.
+
+**Feature Decomposition:**
+
+| Feature ID | Title | Owner | Supporting | Depends On |
+|---|---|---|---|---|
+| FEAT-UI-001 | Design System & Global Styles | 🎨 UI Agent | — | None (foundational) |
+| FEAT-UI-002 | App Shell & Landing Page | ⚙️ Engineer | 🎨 UI Agent | UI-001 |
+| FEAT-UI-005 | WebGLViewport Refactoring | ⚙️ Engineer | — | UI-001, UI-002 |
+| FEAT-UI-003 | Workspace Toolbar & Controls | ⚙️ Engineer | 🎨 UI Agent | UI-001, UI-002 |
+| FEAT-UI-004 | Context Menu & Plot Windows | ⚙️ Engineer | 🎨 UI Agent | UI-001, UI-002, UI-003, UI-005 |
+
+**Execution order:** UI-001 → UI-002 → UI-005 → UI-003 → UI-004
+
+**Key decisions:**
+1. **FEAT-UI-005 added.** The WebGLViewport refactoring (827→~450 lines) is complex enough to warrant its own dedicated spec. It must be completed before UI-003 and UI-004 can integrate.
+2. **Owner agents assigned.** UI Agent leads pure CSS work (UI-001). Code Engineer leads all component logic (UI-002 through UI-005) with UI Agent supporting on styling.
+3. **No state management library (Zustand/Redux) in this phase.** React state + refs remain sufficient. Deferred to future phase.
+4. **Imperative refs pattern adopted** for PlotWindow data feed — avoids 60fps React reconciliation overhead.
+5. **Initial Conditions panel** will be accessible via gear icon in the toolbar (resolved open question).
+
+**Documentation updates:**
+- All 5 FEAT-UI files created/updated with owner agents, dependencies, prop interfaces, and expanded acceptance criteria.
+- `PROJECT_TRACKER.md` updated with UI/UX feature table (now includes owners) and corrected dashboard.
+
+**Affected Agents:** Code Engineer, UI Agent  
+**Rationale:** All backend engineering phases (1–5) are complete. The project transitions to production UI build-out. The 5-ticket decomposition follows a strict dependency chain to minimize integration risk.
+
+---
+

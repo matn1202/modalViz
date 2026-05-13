@@ -138,6 +138,21 @@
 
 ---
 
+## UI/UX Overhaul — Production Layout
+**Architecture goal:** Replace the test harness with a polished, immersive visualization workspace. The 3D viewport becomes the full-screen hero, with all controls floating as overlays.
+
+| Feature | File(s) | Owner | Status | Notes |
+|---|---|---|---|---|
+| Design System & Global Styles | `index.css`, `App.css` | 🎨 UI Agent | ❌ Not started | FEAT-UI-001 |
+| App Shell & Routing | `App.jsx`, `ModalVizApp.jsx` | ⚙️ Engineer | ❌ Not started | FEAT-UI-002 |
+| Landing Page (File Ingestion) | `LandingPage.jsx` | ⚙️ Engineer + 🎨 UI | ❌ Not started | FEAT-UI-002 |
+| WebGLViewport Refactoring | `WebGLViewport.jsx` | ⚙️ Engineer | ❌ Not started | FEAT-UI-005 |
+| Workspace Toolbar & Controls | `Toolbar.jsx`, `AnimationControls.jsx` | ⚙️ Engineer + 🎨 UI | ❌ Not started | FEAT-UI-003 |
+| Context Menu & Plot Windows | `ContextMenu.jsx`, `PlotWindow.jsx` | ⚙️ Engineer + 🎨 UI | ❌ Not started | FEAT-UI-004 |
+| ColorBar Repositioning | `ColorBarLegend.jsx` | ⚙️ Engineer | ❌ Not started | FEAT-UI-004 |
+
+---
+
 ## Application Wiring & UI Status
 
 | Concern | Status | Notes |
@@ -165,14 +180,16 @@
 | Phase | Description | Progress |
 |---|---|---|
 | **Phase 1** | Data Ingestion & Math Engine | ✅ **Complete** |
-| **Phase 2** | 3D Engine Construction | ⚠️ **~90%** (point cloud only, no mesh faces) |
+| **Phase 2** | 3D Engine Construction | ✅ **Complete** (topology gap closed by Phase 5) |
 | **Phase 3** | Animation, Contour, Transients | ✅ **Complete** |
 | **Phase 4** | Raycasting & 2D Plots | ✅ **Complete** |
 | **Phase 5** | Generalization & Topology | ✅ **Complete** |
-| **UI/UX** | Production layout & styling | ❌ **0%** |
-| **State Mgmt** | Redux / Zustand integration | ❌ **0%** |
+| **UI/UX** | Production layout & styling | 🟡 **Planned** (5 feature files ready) |
+| **State Mgmt** | Redux / Zustand integration | ❌ **Deferred** (not needed for current scope) |
 
-### Next available work (ordered by dependency):
-1. **Phase 5** — Generalization & Topology (closes the Phase 2 gap, supports beams/plates/frames, selectable axes)
-2. **UI/UX** — Replace test harnesses with a polished production layout
-3. **State Management** — Introduce Zustand/Redux for cross-component data flows
+### Implementation Order (UI/UX Phase):
+1. **FEAT-UI-001** — Design System & Global Styles (🎨 UI Agent)
+2. **FEAT-UI-002** — App Shell & Landing Page (⚙️ Engineer + 🎨 UI Agent)
+3. **FEAT-UI-005** — WebGLViewport Refactoring (⚙️ Engineer)
+4. **FEAT-UI-003** — Workspace Toolbar & Controls (⚙️ Engineer + 🎨 UI Agent)
+5. **FEAT-UI-004** — Context Menu & Plot Windows (⚙️ Engineer + 🎨 UI Agent)
