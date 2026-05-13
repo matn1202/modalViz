@@ -80,3 +80,77 @@ Awaiting work order from Director to begin production UI build-out.
 
 ---
 
+### 2026-05-13 — FEAT-UI-001 Design System Implementation
+
+**Type:** Design System / Styling  
+**Scope:** `modal-kinematics/src/index.css`, `modal-kinematics/src/App.css`  
+**Details:** Overwrote Vite boilerplate with ModalViz custom design tokens and structural classes.
+- Defined color variables (`--bg-base`, `--accent-cyan`, etc.), fonts (`Inter`), typography.
+- Created `.glass-panel` and `.glass-panel-accent` classes for glassmorphic containers.
+- Configured layout classes (`.landing-page`, `.workspace`, `.toolbar`, etc.).
+- Defined keyframes (`fade-in`, `pulse-glow`, `dash-march`).
+**Design Rationale:** Following the engineering-grade premium dark theme requirement. The `#root` and `body` are locked to `100vw/100vh` to prevent scrollbars, ensuring the 3D viewport takes full screen space while the UI overlays it.
+**Files Modified:**
+- `modal-kinematics/src/index.css` — Global variables, utility classes, animations.
+- `modal-kinematics/src/App.css` — Component structural CSS.
+
+---
+
+### 2026-05-13 — FEAT-UI-002 Landing Page Styling
+
+**Type:** Layout / Styling  
+**Scope:** `modal-kinematics/src/LandingPage.jsx`  
+**Details:** Restyled the Landing Page to align with the FEAT-UI-001 design system.
+- Replaced inline styling with `.glass-panel` for the main card.
+- Implemented `pulse-glow` keyframe and `--hover-bg` variables on the drag-and-drop zone.
+- Overhauled the mapping table to use dark-themed backgrounds (`--bg-surface`, `--bg-elevated`) and cyan accent highlights.
+- Styled the "Confirm & Visualize" button using the new interaction variables.
+**Design Rationale:** Ensuring a premium first impression when the user loads the app. Glassmorphism establishes depth, and the dark mode parsing table ensures data is legible without blinding the user.
+**Files Modified:**
+- `modal-kinematics/src/LandingPage.jsx` — Replaced inline styles with tokens.
+
+---
+
+### 2026-05-13 — FEAT-UI-003 Workspace Controls Styling
+
+**Type:** Layout / Styling  
+**Scope:** `modal-kinematics/src/Toolbar.jsx`, `modal-kinematics/src/AnimationControls.jsx`  
+**Details:** Restyled the top Toolbar and the bottom floating AnimationControls using the `.glass-panel` utilities.
+- Removed hardcoded inline backgrounds and borders that conflicted with `App.css` layout rules.
+- Toolbar: Replaced standard inputs/selects with dark-themed components utilizing `var(--bg-base)` and `var(--bg-elevated)`. Refined the Initial Conditions dropdown with hover states and proper padding. Styled the Re-upload button and Selected Node badge to match the cyan accent palette.
+- AnimationControls: Configured the pill shape (`borderRadius: var(--radius-lg)`), added circular background highlights for Play/Pause (cyan) and Stop (red), and implemented smooth hover box-shadow effects to enhance interactivity.
+**Design Rationale:** Controls should float above the 3D canvas and not obstruct the visualization. The glassmorphism ensures the controls are legible while retaining context of the underlying structure.
+**Files Modified:**
+- `modal-kinematics/src/Toolbar.jsx`
+- `modal-kinematics/src/AnimationControls.jsx`
+
+---
+
+### 2026-05-13 — FEAT-UI-004 Context Menu & Plots Styling
+
+**Type:** Layout / Styling  
+**Scope:** `ContextMenu.jsx`, `PlotWindow.jsx`, `ColorBarLegend.jsx`  
+**Details:** Restyled the floating data layers for the interactive viewport.
+- **ContextMenu**: Refactored to drop redundant inline box-shadows/borders in favor of `.glass-panel`. Added cyan text highlights for the target node ID and hover states for the plot toggle buttons (`--hover-bg`).
+- **PlotWindow**: Switched to the `.glass-panel-accent` utility class to give the window a distinct cyan-tinted border. The title drag-handle now uses `--bg-elevated` with a custom red hover interaction on the close button.
+- **ColorBarLegend**: Cleaned up inline positioning (delegated to `.colorbar-legend` in `App.css`). Styled the labels with the new typography tokens (`--text-primary`, `--text-secondary`).
+**Design Rationale:** Interactive overlays need to pop out from the 3D structure without blocking it completely. The glassmorphism hierarchy (base -> elevated -> accent) ensures that draggable floating windows (Plots) have a stronger visual presence than static UI elements.
+**Files Modified:**
+- `modal-kinematics/src/ContextMenu.jsx`
+- `modal-kinematics/src/PlotWindow.jsx`
+- `modal-kinematics/src/engine/ColorBarLegend.jsx`
+
+---
+
+### 2026-05-13 — FEAT-UI-006 Playback Controls Overlay Positioning
+
+**Type:** Layout / Styling  
+**Scope:** `modal-kinematics/src/App.css`, `modal-kinematics/src/AnimationControls.jsx`  
+**Details:** Extracted the playback controls from normal document flow to function as a floating overlay.
+- Updated `.animation-controls` in `App.css` to use `position: absolute`, `bottom: 30px`, `transform: translateX(-50%)`, and `z-index: 100`.
+- Verified that `AnimationControls.jsx` inline styling (pill border-radius and glassmorphism) does not conflict with the CSS class, resulting in a clean, unobstructed view of the 3D canvas.
+**Design Rationale:** Controls should remain accessible without compressing the primary 3D viewport. The floating overlay maximizes the screen real estate for the visualizer.
+**Files Modified:**
+- `modal-kinematics/src/App.css`
+
+---

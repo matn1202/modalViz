@@ -1,10 +1,10 @@
 import React from 'react';
-import TestHarness from './test/TestHarness2.jsx'
+import ModalVizApp from './ModalVizApp.jsx'
 
 function App() {
   return(
     <div className='App'>
-      <TestHarness />
+      <ModalVizApp />
     </div>
   );
 }

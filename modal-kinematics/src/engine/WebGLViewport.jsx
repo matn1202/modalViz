@@ -1,16 +1,27 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { Line2 } from 'three/addons/lines/Line2.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
+import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { jetColormap } from './colormap.js';
-import ColorBarLegend from './ColorBarLegend.jsx';
-import { RollingBuffer } from './RollingBuffer.js';
-import KinematicPlots from './KinematicPlots.jsx';
 import Delaunator from 'delaunator';
 
-// Rolling buffers for scoped kinematic data
-const BUFFER_CAPACITY = 500; // ~8 seconds of data at 60fps
-
-export default function WebGLViewport({ geometryData, engine }) {
+export default function WebGLViewport({ 
+    geometryData, 
+    engine,
+    playbackStateRef,
+    simTimeRef,
+    sliderRef,
+    timeDisplayRef,
+    exaggerationRef,
+    selectedAxisRef,
+    onNodeSelect,
+    onNodeRightClick,
+    onColorRangeChange,
+    plotWindowRefs
+}) {
     const mountRef = useRef(null);
     const sceneRef = useRef(null);
     const geometryRef = useRef(null);
@@ -19,92 +30,42 @@ export default function WebGLViewport({ geometryData, engine }) {
     // Raycasting & Selection state
     const selectedNodeRef = useRef(null);
     const highlightMeshRef = useRef(null);
-    const [selectedNodeInfo, setSelectedNodeInfo] = useState(null);
 
-    const timeBuf = useRef(new RollingBuffer(BUFFER_CAPACITY));
-    const dispBuf = useRef(new RollingBuffer(BUFFER_CAPACITY));
-    const velBuf = useRef(new RollingBuffer(BUFFER_CAPACITY));
-    const accBuf = useRef(new RollingBuffer(BUFFER_CAPACITY));
-    const [plotData, setPlotData] = useState(null);
-
-    // Playback state
-    const playbackStateRef = useRef('stopped'); // 'stopped' | 'playing' | 'paused'
-    const simTimeRef = useRef(0);
+    // Internal timing & rendering state
     const lastTimestampRef = useRef(0);
-    const timeDisplayRef = useRef(null);
-    const sliderRef = useRef(null);
-    const timeScale = 1.0;
-
-    // Simulation Parameters state
-    const [selectedModeIndex, setSelectedModeIndex] = useState('all');
-    const [dampingRatio, setDampingRatio] = useState(engine ? engine.zeta : 0.05);
-    const [exaggerationScale, setExaggerationScale] = useState(1.0);
-    const exaggerationRef = useRef(1.0);
-    const [icDisplacements, setIcDisplacements] = useState([]);
-    const [icVelocities, setIcVelocities] = useState([]);
-
-    // FEAT-P5-003: Selectable Axis
-    const [selectedAxisUI, setSelectedAxisUI] = useState('Normal');
-    const selectedAxisRef = useRef('Normal');
-    const handleAxisChange = (e) => {
-        const val = e.target.value;
-        setSelectedAxisUI(val);
-        selectedAxisRef.current = val;
-    };
-
-    useEffect(() => {
-        if (engine) {
-            const dofsPerNode = engine.totalDofs / engine.numNodes;
-            const d0 = new Array(engine.totalDofs).fill(0);
-            for (let k = 0; k < dofsPerNode; k++) d0[k] = 1.0;
-            setIcDisplacements(d0);
-            setIcVelocities(new Array(engine.totalDofs).fill(0));
-            setDampingRatio(engine.zeta);
-        }
-    }, [engine]);
-
-    // Color mapping state
-    const [colorRange, setColorRange] = useState({ min: 0, max: 0 });
     const frameCountRef = useRef(0);
+    const timeScale = 1.0;
 
     useEffect(() => {
         if (!mountRef.current || !geometryData) return;
 
-        // 1. Initialize Scene, Camera, and Renderer [cite: 203]
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x1a1a1a); // Dark background for FEA contrast
+        scene.background = new THREE.Color(0x1a1a1a);
         sceneRef.current = scene;
 
         const width = mountRef.current.clientWidth;
-        const height = mountRef.current.clientHeight || 500; // Default height
+        const height = mountRef.current.clientHeight || 500;
 
         const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 10000);
-        camera.position.set(5, 5, 5); // Initial angled view
+        camera.position.set(5, 5, 5);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(width, height);
         renderer.setPixelRatio(window.devicePixelRatio);
 
-        // Clear any leftover canvas from a previous StrictMode mount cycle
         while (mountRef.current.firstChild) {
             mountRef.current.removeChild(mountRef.current.firstChild);
         }
-
         mountRef.current.appendChild(renderer.domElement);
-
-        // Ensure pointer events are not intercepted by the browser's touch/scroll handler.
-        // OrbitControls requires raw pointer events without browser gesture interference.
         renderer.domElement.style.touchAction = 'none';
 
-        // 1b. Raycaster setup
         const raycaster = new THREE.Raycaster();
-        raycaster.params.Points.threshold = 0.1; // Hit detection radius for point cloud
+        raycaster.params.Points.threshold = 0.1;
         const mouse = new THREE.Vector2();
 
-        // 1c. Highlight mesh setup
         const highlightGeometry = new THREE.SphereGeometry(0.08, 16, 16);
         const highlightMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0x00ff88,  // Bright green
+            color: 0x00ff88,
             transparent: true,
             opacity: 0.8
         });
@@ -113,38 +74,30 @@ export default function WebGLViewport({ geometryData, engine }) {
         scene.add(highlightMesh);
         highlightMeshRef.current = highlightMesh;
 
-        // 2. Add Lighting Controls [cite: 203]
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
         scene.add(ambientLight);
         const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
         directionalLight.position.set(10, 20, 10);
         scene.add(directionalLight);
         
-        // --- NEW: Add Spatial Helpers ---
-        const axesHelper = new THREE.AxesHelper(2); // RGB lines for X, Y, Z axes
+        const axesHelper = new THREE.AxesHelper(2);
         scene.add(axesHelper);
 
         const gridHelper = new THREE.GridHelper(5, 10);
-        gridHelper.position.y = -0.5; // Drop the grid slightly below our nodes
+        gridHelper.position.y = -0.5;
         scene.add(gridHelper);
-        // --------------------------------
         
-        // 3. Construct the THREE.BufferGeometry 
         const geometry = new THREE.BufferGeometry();
         geometryRef.current = geometry;
         
-        // Weave the parsed typed arrays into a single Float32Array for WebGL
         const numNodes = geometryData.xCoords.length;
         const positions = new Float32Array(numNodes * 3);
         const colors = new Float32Array(numNodes * 3);
 
         for (let i = 0; i < numNodes; i++) {
-            // Position mapping
             positions[i * 3] = geometryData.xCoords[i];
             positions[i * 3 + 1] = geometryData.yCoords[i];
             positions[i * 3 + 2] = geometryData.zCoords[i];
-
-            // Initialize with a default neutral color (e.g., light grey)
             colors[i * 3] = 0.8;
             colors[i * 3 + 1] = 0.8;
             colors[i * 3 + 2] = 0.8;
@@ -152,11 +105,9 @@ export default function WebGLViewport({ geometryData, engine }) {
 
         restPositionsRef.current = new Float32Array(positions);
 
-        // Assign the arrays to the geometry attributes
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
-        // --- NEW: FEAT-P5-002 Auto-Topology Generation ---
         let minX = Infinity, maxX = -Infinity;
         let minY = Infinity, maxY = -Infinity;
         let minZ = Infinity, maxZ = -Infinity;
@@ -178,20 +129,11 @@ export default function WebGLViewport({ geometryData, engine }) {
         const hasZ = (maxZ - minZ) > eps;
         const numDims = (hasX ? 1 : 0) + (hasY ? 1 : 0) + (hasZ ? 1 : 0);
 
-        if (numDims === 2) {
-            setSelectedAxisUI('Normal');
-            selectedAxisRef.current = 'Normal';
-        } else {
-            const axis = geometryData.shapeAxis ? geometryData.shapeAxis.toUpperCase() : 'Normal';
-            setSelectedAxisUI(axis);
-            selectedAxisRef.current = axis;
-        }
-
         let topologyMaterial = null;
         let topologyObject = null;
+        let undeformedTopologyMaterial = null;
 
         if (numDims === 1) {
-            // 1D Topology (Beam/Axial)
             const primaryAxis = hasX ? 0 : (hasY ? 1 : 2);
             const indicesWithPositions = [];
             for (let i = 0; i < numNodes; i++) {
@@ -206,14 +148,28 @@ export default function WebGLViewport({ geometryData, engine }) {
             
             geometry.setIndex(lineIndices);
             geometry.computeVertexNormals();
-            topologyMaterial = new THREE.LineBasicMaterial({
+            topologyMaterial = new LineMaterial({
+                color: 0xffffff,
+                linewidth: 5,
                 vertexColors: true,
-                linewidth: 2
+                resolution: new THREE.Vector2(width, height)
             });
-            topologyObject = new THREE.LineSegments(geometry, topologyMaterial);
+            
+            const lineGeom = new LineSegmentsGeometry().fromLineSegments(new THREE.LineSegments(geometry));
+            topologyObject = new LineSegments2(lineGeom, topologyMaterial);
             scene.add(topologyObject);
+
+            undeformedTopologyMaterial = new LineMaterial({
+                color: 0xffffff,
+                linewidth: 2,
+                vertexColors: false,
+                transparent: true,
+                opacity: 0.3,
+                resolution: new THREE.Vector2(width, height)
+            });
+            const undeformedObject = new LineSegments2(lineGeom, undeformedTopologyMaterial);
+            scene.add(undeformedObject);
         } else if (numDims === 2) {
-            // 2D Topology (Plate/Shell)
             const axes = [];
             if (hasX) axes.push(0);
             if (hasY) axes.push(1);
@@ -236,21 +192,36 @@ export default function WebGLViewport({ geometryData, engine }) {
             });
             topologyObject = new THREE.Mesh(geometry, topologyMaterial);
             scene.add(topologyObject);
-        }
-        // -------------------------------------------------
 
-        // 4. Create the Material with vertexColors enabled [cite: 148, 151]
+            const undeformedMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffffff,
+                wireframe: true,
+                transparent: true,
+                opacity: 0.2
+            });
+            const undeformedObject = new THREE.Mesh(geometry.clone(), undeformedMaterial);
+            scene.add(undeformedObject);
+        }
+
         const material = new THREE.PointsMaterial({
-            size: 0.1, // Adjust based on your model's scale
+            size: 0.15,
             vertexColors: true,
             sizeAttenuation: true
         });
 
-        // 5. Build the mesh (Point Cloud) and add to scene
         const pointsMesh = new THREE.Points(geometry, material);
         scene.add(pointsMesh);
 
-        // Center the camera on the mesh
+        const undeformedPointsMaterial = new THREE.PointsMaterial({
+            color: 0x888888,
+            size: 0.1,
+            sizeAttenuation: true,
+            transparent: true,
+            opacity: 0.5
+        });
+        const undeformedPointsMesh = new THREE.Points(geometry.clone(), undeformedPointsMaterial);
+        scene.add(undeformedPointsMesh);
+
         geometry.computeBoundingSphere();
         if (geometry.boundingSphere) {
             const center = geometry.boundingSphere.center;
@@ -259,25 +230,89 @@ export default function WebGLViewport({ geometryData, engine }) {
             camera.lookAt(center);
         }
 
-        // 6. Initialize OrbitControls for smooth interaction
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
         controls.dampingFactor = 0.05;
         
-        // Set the controls target to the center of our geometry
         if (geometry.boundingSphere) {
             controls.target.copy(geometry.boundingSphere.center);
         } else {
             controls.target.set(0, 0, 0);
         }
-
-        // CRITICAL: Force the controls to update their internal math 
-        // based on the new target BEFORE the first frame renders.
         controls.update();
+
+        // Initial Deformation on Mount
+        if (engine) {
+            engine.evaluateModalState(0);
+            const displacement = engine.getGlobalDisplacement();
+            const posArray = geometry.attributes.position.array;
+            const colorArray = geometry.attributes.color.array;
+            const restPositions = restPositionsRef.current;
+            const dofsPerNode = engine.totalDofs / engine.numNodes;
+            const S = exaggerationRef?.current ?? 1.0;
+            const axisStr = selectedAxisRef?.current ?? (numDims === 2 ? 'Normal' : (geometryData.shapeAxis?.toUpperCase() || 'Normal'));
+            
+            let minMag = Infinity;
+            let maxMag = -Infinity;
+            const magnitudes = new Float32Array(engine.numNodes);
+
+            for (let i = 0; i < engine.numNodes; i++) {
+                let mag = 0;
+                if (dofsPerNode === 1) {
+                    const d = displacement[i];
+                    posArray[i * 3]     = restPositions[i * 3];
+                    posArray[i * 3 + 1] = restPositions[i * 3 + 1];
+                    posArray[i * 3 + 2] = restPositions[i * 3 + 2];
+                    
+                    if (axisStr === 'X') {
+                        posArray[i * 3] += d * S;
+                    } else if (axisStr === 'Y') {
+                        posArray[i * 3 + 1] += d * S;
+                    } else if (axisStr === 'Z') {
+                        posArray[i * 3 + 2] += d * S;
+                    } else {
+                        const nx = geometry.attributes.normal ? geometry.attributes.normal.array[i * 3] : 0;
+                        const ny = geometry.attributes.normal ? geometry.attributes.normal.array[i * 3 + 1] : 0;
+                        const nz = geometry.attributes.normal ? geometry.attributes.normal.array[i * 3 + 2] : 0;
+                        posArray[i * 3] += d * S * nx;
+                        posArray[i * 3 + 1] += d * S * ny;
+                        posArray[i * 3 + 2] += d * S * nz;
+                    }
+                    mag = Math.abs(d);
+                } else if (dofsPerNode === 3) {
+                    const dx = displacement[i * 3];
+                    const dy = displacement[i * 3 + 1];
+                    const dz = displacement[i * 3 + 2];
+                    posArray[i * 3]     = restPositions[i * 3]     + dx * S;
+                    posArray[i * 3 + 1] = restPositions[i * 3 + 1] + dy * S;
+                    posArray[i * 3 + 2] = restPositions[i * 3 + 2] + dz * S;
+                    mag = Math.sqrt(dx*dx + dy*dy + dz*dz);
+                }
+                magnitudes[i] = mag;
+                if (mag < minMag) minMag = mag;
+                if (mag > maxMag) maxMag = mag;
+            }
+            geometry.attributes.position.needsUpdate = true;
+            
+            const range = maxMag - minMag;
+            const invRange = range > 1e-10 ? 1.0 / range : 0;
+            for (let i = 0; i < engine.numNodes; i++) {
+                const normalized = (magnitudes[i] - minMag) * invRange;
+                const [r, g, b] = jetColormap(normalized);
+                colorArray[i * 3]     = r;
+                colorArray[i * 3 + 1] = g;
+                colorArray[i * 3 + 2] = b;
+            }
+            geometry.attributes.color.needsUpdate = true;
+            
+            if (topologyObject && topologyObject.isLineSegments2) {
+                topologyObject.geometry.fromLineSegments(new THREE.LineSegments(geometry));
+            }
+
+            if (onColorRangeChange) onColorRangeChange({ min: minMag, max: maxMag });
+        }
         
-        // 6b. Implement the click handler for node selection
         const handleNodeClick = (event) => {
-            // Only react to left clicks
             if (event.button !== 0) return;
             
             const rect = renderer.domElement.getBoundingClientRect();
@@ -290,14 +325,10 @@ export default function WebGLViewport({ geometryData, engine }) {
             if (intersects.length > 0) {
                 const hit = intersects[0];
                 const vertexIndex = hit.index; 
-                
                 const nodeId = geometryData.nodes ? geometryData.nodes[vertexIndex] : vertexIndex;
-                
-                // Account for DOF mapping: vertex index * dofsPerNode
                 const dofsPerNode = engine ? (engine.totalDofs / engine.numNodes) : 1;
                 const dofIndex = dofsPerNode === 1 ? vertexIndex : vertexIndex * 3;
                 
-                // Update highlight sphere position
                 const posArray = geometryRef.current.attributes.position.array;
                 highlightMesh.position.set(
                     posArray[vertexIndex * 3],
@@ -306,50 +337,58 @@ export default function WebGLViewport({ geometryData, engine }) {
                 );
                 highlightMesh.visible = true;
                 
-                // Store selected node info
-                selectedNodeRef.current = { vertexIndex, nodeId, dofIndex };
-                setSelectedNodeInfo({ vertexIndex, nodeId, dofIndex });
-                
-                timeBuf.current.clear();
-                dispBuf.current.clear();
-                velBuf.current.clear();
-                accBuf.current.clear();
-                setPlotData(null);
+                const nodeInfo = { vertexIndex, nodeId, dofIndex };
+                selectedNodeRef.current = nodeInfo;
+                if (onNodeSelect) onNodeSelect(nodeInfo);
             } else {
                 highlightMesh.visible = false;
                 selectedNodeRef.current = null;
-                setSelectedNodeInfo(null);
-                
-                timeBuf.current.clear();
-                dispBuf.current.clear();
-                velBuf.current.clear();
-                accBuf.current.clear();
-                setPlotData(null);
+                if (onNodeSelect) onNodeSelect(null);
             }
         };
 
-        // Differentiate click vs drag
-        let pointerDownPos = { x: 0, y: 0 };
-        
-        const onPointerDown = (e) => {
-            pointerDownPos = { x: e.clientX, y: e.clientY };
-        };
-        
-        const onPointerUp = (e) => {
-            const dx = e.clientX - pointerDownPos.x;
-            const dy = e.clientY - pointerDownPos.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
+        const onContextMenu = (event) => {
+            event.preventDefault();
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
             
-            // Only treat as a click if mouse moved less than 3 pixels
-            if (dist < 3) {
-                handleNodeClick(e);
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObject(pointsMesh);
+            
+            if (intersects.length > 0 && onNodeRightClick) {
+                const hit = intersects[0];
+                const vertexIndex = hit.index; 
+                const nodeId = geometryData.nodes ? geometryData.nodes[vertexIndex] : vertexIndex;
+                const dofsPerNode = engine ? (engine.totalDofs / engine.numNodes) : 1;
+                const dofIndex = dofsPerNode === 1 ? vertexIndex : vertexIndex * 3;
+                
+                onNodeRightClick(
+                    { vertexIndex, nodeId, dofIndex }, 
+                    { x: event.clientX, y: event.clientY }
+                );
+            }
+        };
+
+        let pointerDownPos = { x: 0, y: 0 };
+        const onPointerDown = (e) => {
+            if (e.button === 0) {
+                pointerDownPos = { x: e.clientX, y: e.clientY };
+            }
+        };
+        const onPointerUp = (e) => {
+            if (e.button === 0) {
+                const dx = e.clientX - pointerDownPos.x;
+                const dy = e.clientY - pointerDownPos.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < 3) handleNodeClick(e);
             }
         };
 
         renderer.domElement.addEventListener('pointerdown', onPointerDown);
         renderer.domElement.addEventListener('pointerup', onPointerUp);
+        renderer.domElement.addEventListener('contextmenu', onContextMenu);
 
-        // 7. The render loop
         let animationFrameId;
         const animate = (timestamp) => {
             animationFrameId = requestAnimationFrame(animate);
@@ -358,23 +397,26 @@ export default function WebGLViewport({ geometryData, engine }) {
             const dt = (timestamp - lastTimestampRef.current) / 1000;
             lastTimestampRef.current = timestamp;
 
-            if (playbackStateRef.current === 'playing' && engine && geometryRef.current && restPositionsRef.current) {
-                simTimeRef.current += dt * timeScale;
+            if (playbackStateRef?.current === 'playing' && engine && geometryRef.current && restPositionsRef.current) {
+                if (simTimeRef) {
+                    simTimeRef.current += dt * timeScale;
+                }
+                const currentSimTime = simTimeRef ? simTimeRef.current : 0;
                 
-                engine.evaluateModalState(simTimeRef.current);
+                engine.evaluateModalState(currentSimTime);
                 const displacement = engine.getGlobalDisplacement();
                 
                 const posArray = geometryRef.current.attributes.position.array;
                 const colorArray = geometryRef.current.attributes.color.array;
                 const restPositions = restPositionsRef.current;
                 const dofsPerNode = engine.totalDofs / engine.numNodes;
-                const S = exaggerationRef.current;
+                const S = exaggerationRef?.current ?? 1.0;
                 
                 let minMag = Infinity;
                 let maxMag = -Infinity;
                 const magnitudes = new Float32Array(engine.numNodes);
 
-                const axisStr = selectedAxisRef.current;
+                const axisStr = selectedAxisRef?.current ?? 'Normal';
 
                 for (let i = 0; i < engine.numNodes; i++) {
                     let mag = 0;
@@ -390,7 +432,7 @@ export default function WebGLViewport({ geometryData, engine }) {
                             posArray[i * 3 + 1] += d * S;
                         } else if (axisStr === 'Z') {
                             posArray[i * 3 + 2] += d * S;
-                        } else { // Normal
+                        } else {
                             const nx = geometryRef.current.attributes.normal ? geometryRef.current.attributes.normal.array[i * 3] : 0;
                             const ny = geometryRef.current.attributes.normal ? geometryRef.current.attributes.normal.array[i * 3 + 1] : 0;
                             const nz = geometryRef.current.attributes.normal ? geometryRef.current.attributes.normal.array[i * 3 + 2] : 0;
@@ -426,42 +468,34 @@ export default function WebGLViewport({ geometryData, engine }) {
                 geometryRef.current.attributes.color.needsUpdate = true;
                 
                 frameCountRef.current++;
-                if (frameCountRef.current % 10 === 0) {
-                    setColorRange({ min: minMag, max: maxMag });
+                if (frameCountRef.current % 10 === 0 && onColorRangeChange) {
+                    onColorRangeChange({ min: minMag, max: maxMag });
                 }
 
-                // --- SCOPED KINEMATIC EXTRACTION (Phase 4) ---
-                if (selectedNodeRef.current && engine) {
-                    const dofIdx = selectedNodeRef.current.dofIndex;
-                    const kin = engine.getScopedKinematics(dofIdx);
-                    
-                    timeBuf.current.push(simTimeRef.current);
-                    dispBuf.current.push(kin.position);
-                    velBuf.current.push(kin.velocity);
-                    accBuf.current.push(kin.acceleration);
-                    
-                    // Throttle Plotly updates to every 6 frames (~10 Hz at 60fps)
-                    if (frameCountRef.current % 6 === 0) {
-                        setPlotData({
-                            time: timeBuf.current.toArray(),
-                            displacement: dispBuf.current.toArray(),
-                            velocity: velBuf.current.toArray(),
-                            acceleration: accBuf.current.toArray(),
-                        });
+                // Plot data feed per frame
+                if (plotWindowRefs?.current) {
+                    for (const [windowId, ref] of plotWindowRefs.current.entries()) {
+                        if (ref.pushData) {
+                            const kin = engine.getScopedKinematics(ref.dofIndex);
+                            ref.pushData(currentSimTime, kin);
+                        }
                     }
                 }
                 
-                if (timeDisplayRef.current) {
-                    timeDisplayRef.current.textContent = `t = ${simTimeRef.current.toFixed(3)}s`;
+                if (topologyObject && topologyObject.isLineSegments2) {
+                    topologyObject.geometry.fromLineSegments(new THREE.LineSegments(geometryRef.current));
                 }
-                if (sliderRef.current) {
-                    sliderRef.current.value = simTimeRef.current;
+                
+                if (timeDisplayRef?.current) {
+                    timeDisplayRef.current.textContent = `t = ${currentSimTime.toFixed(3)}s`;
+                }
+                if (sliderRef?.current) {
+                    sliderRef.current.value = currentSimTime;
                 }
             }
 
-            controls.update(); // Required for damping
+            controls.update();
 
-            // Track highlight mesh to selected node right before render
             if (selectedNodeRef.current && highlightMesh.visible && geometryRef.current) {
                 const idx = selectedNodeRef.current.vertexIndex;
                 const posArray = geometryRef.current.attributes.position.array;
@@ -476,21 +510,51 @@ export default function WebGLViewport({ geometryData, engine }) {
         };
         requestAnimationFrame(animate);
 
-        // 8. Handle Window Resize
         const handleResize = () => {
             const newWidth = mountRef.current.clientWidth;
             const newHeight = mountRef.current.clientHeight;
             camera.aspect = newWidth / newHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(newWidth, newHeight);
+            if (topologyMaterial && topologyMaterial.isLineMaterial) {
+                topologyMaterial.resolution.set(newWidth, newHeight);
+            }
+            if (undeformedTopologyMaterial && undeformedTopologyMaterial.isLineMaterial) {
+                undeformedTopologyMaterial.resolution.set(newWidth, newHeight);
+            }
         };
+        const onClearNodeSelection = () => {
+            highlightMesh.visible = false;
+            selectedNodeRef.current = null;
+            if (onNodeSelect) onNodeSelect(null);
+        };
+
+        const onResetDeformation = () => {
+            if (geometryRef.current && restPositionsRef.current) {
+                const posArray = geometryRef.current.attributes.position.array;
+                posArray.set(restPositionsRef.current);
+                geometryRef.current.attributes.position.needsUpdate = true;
+                
+                const colorArray = geometryRef.current.attributes.color.array;
+                for (let i = 0; i < colorArray.length; i++) {
+                    colorArray[i] = 0.8;
+                }
+                geometryRef.current.attributes.color.needsUpdate = true;
+                if (onColorRangeChange) onColorRangeChange({ min: 0, max: 0 });
+            }
+        };
+
+        window.addEventListener('clearNodeSelection', onClearNodeSelection);
+        window.addEventListener('resetDeformation', onResetDeformation);
         window.addEventListener('resize', handleResize);
 
-        // 9. Cleanup on unmount
         return () => {
             window.removeEventListener('resize', handleResize);
+            window.removeEventListener('clearNodeSelection', onClearNodeSelection);
+            window.removeEventListener('resetDeformation', onResetDeformation);
             renderer.domElement.removeEventListener('pointerdown', onPointerDown);
             renderer.domElement.removeEventListener('pointerup', onPointerUp);
+            renderer.domElement.removeEventListener('contextmenu', onContextMenu);
             cancelAnimationFrame(animationFrameId);
             controls.dispose();
             geometry.dispose();
@@ -499,7 +563,6 @@ export default function WebGLViewport({ geometryData, engine }) {
             highlightGeometry.dispose();
             highlightMaterial.dispose();
             renderer.dispose();
-            // Safe DOM removal — check that the canvas is still a child of mount
             const mount = mountRef.current;
             if (mount) {
                 while (mount.firstChild) {
@@ -507,321 +570,15 @@ export default function WebGLViewport({ geometryData, engine }) {
                 }
             }
         };
-    }, [geometryData, engine]);
+    }, [geometryData, engine]); // Minimal dependencies to prevent re-mounting the canvas
 
-    const handleClearSelection = () => {
-        selectedNodeRef.current = null;
-        setSelectedNodeInfo(null);
-        if (highlightMeshRef.current) highlightMeshRef.current.visible = false;
-        
-        timeBuf.current.clear();
-        dispBuf.current.clear();
-        velBuf.current.clear();
-        accBuf.current.clear();
-        setPlotData(null);
-    };
-
-    const handlePlay = () => {
-        playbackStateRef.current = 'playing';
-        lastTimestampRef.current = 0; // Reset delta tracking
-    };
-
-    const handlePause = () => {
-        playbackStateRef.current = 'paused';
-    };
-
-    const handleStop = () => {
-        playbackStateRef.current = 'stopped';
-        simTimeRef.current = 0;
-        
-        if (timeDisplayRef.current) timeDisplayRef.current.textContent = `t = 0.000s`;
-        if (sliderRef.current) sliderRef.current.value = 0;
-
-        if (geometryRef.current && restPositionsRef.current) {
-            const posArray = geometryRef.current.attributes.position.array;
-            posArray.set(restPositionsRef.current);
-            geometryRef.current.attributes.position.needsUpdate = true;
-            
-            const colorArray = geometryRef.current.attributes.color.array;
-            for (let i = 0; i < colorArray.length; i++) {
-                colorArray[i] = 0.8;
-            }
-            geometryRef.current.attributes.color.needsUpdate = true;
-            setColorRange({ min: 0, max: 0 });
-            
-            timeBuf.current.clear();
-            dispBuf.current.clear();
-            velBuf.current.clear();
-            accBuf.current.clear();
-            setPlotData(null);
-        }
-    };
-
-    const handleModeChange = (e) => {
-        const val = e.target.value;
-        setSelectedModeIndex(val);
-        if (engine) {
-            if (val === 'all') {
-                engine.setActiveModes(null);
-            } else {
-                engine.setActiveModes([parseInt(val, 10)]);
-            }
-        }
-    };
-
-    const handleDampingChange = (val) => {
-        setDampingRatio(val);
-        if (engine) {
-            engine.setDampingRatio(val);
-            handleStop();
-            simTimeRef.current = 0;
-            handlePlay(); // restart transient
-        }
-    };
-
-    const handleExaggerationChange = (val) => {
-        setExaggerationScale(val);
-        exaggerationRef.current = val;
-    };
-
-    const handleICChange = (type, index, val) => {
-        if (type === 'd0') {
-            const newArr = [...icDisplacements];
-            newArr[index] = val;
-            setIcDisplacements(newArr);
-        } else {
-            const newArr = [...icVelocities];
-            newArr[index] = val;
-            setIcVelocities(newArr);
-        }
-    };
-
-    const handleApplyIC = () => {
-        handlePause();
-        if (engine) {
-            const d0 = new Float32Array(icDisplacements.map(v => Number(v) || 0));
-            const v0 = new Float32Array(icVelocities.map(v => Number(v) || 0));
-            engine.setInitialConditions(d0, v0);
-            simTimeRef.current = 0;
-            if (timeDisplayRef.current) timeDisplayRef.current.textContent = `t = 0.000s`;
-            if (sliderRef.current) sliderRef.current.value = 0;
-        }
-    };
+    // Sync ref changes when they change externally, if necessary
+    // E.g., if we want to handle programmatic stop, we check it inside the animation loop.
 
     return (
-        <div style={{ position: 'relative' }}>
-            <div 
-                ref={mountRef} 
-                style={{ width: '100%', height: '600px', borderRadius: '8px', overflow: 'hidden', border: '1px solid #444' }} 
-            />
-            {engine && (
-                <ColorBarLegend 
-                    min={colorRange.min} 
-                    max={colorRange.max} 
-                />
-            )}
-            <div className="playback-controls" style={{ display: 'flex', gap: '8px', padding: '8px', alignItems: 'center' }}>
-                <button onClick={handlePlay}>▶ Play</button>
-                <button onClick={handlePause}>⏸ Pause</button>
-                <button onClick={handleStop}>⏹ Stop</button>
-                <input
-                    ref={sliderRef}
-                    type="range"
-                    min="0"
-                    max="5"
-                    step="0.001"
-                    defaultValue="0"
-                    onChange={(e) => {
-                        const t = parseFloat(e.target.value);
-                        simTimeRef.current = t;
-                        if (timeDisplayRef.current) {
-                            timeDisplayRef.current.textContent = `t = ${t.toFixed(3)}s`;
-                        }
-                        if (engine && geometryRef.current && restPositionsRef.current) {
-                            engine.evaluateModalState(t);
-                            const displacement = engine.getGlobalDisplacement();
-                            const posArray = geometryRef.current.attributes.position.array;
-                            const colorArray = geometryRef.current.attributes.color.array;
-                            const restPositions = restPositionsRef.current;
-                            const dofsPerNode = engine.totalDofs / engine.numNodes;
-                            const S = exaggerationRef.current;
-                            
-                            let minMag = Infinity;
-                            let maxMag = -Infinity;
-                            const magnitudes = new Float32Array(engine.numNodes);
-                            
-                            const axisStr = selectedAxisRef.current;
-
-                            for (let i = 0; i < engine.numNodes; i++) {
-                                let mag = 0;
-                                if (dofsPerNode === 1) {
-                                    const d = displacement[i];
-                                    posArray[i * 3]     = restPositions[i * 3];
-                                    posArray[i * 3 + 1] = restPositions[i * 3 + 1];
-                                    posArray[i * 3 + 2] = restPositions[i * 3 + 2];
-                                    
-                                    if (axisStr === 'X') {
-                                        posArray[i * 3] += d * S;
-                                    } else if (axisStr === 'Y') {
-                                        posArray[i * 3 + 1] += d * S;
-                                    } else if (axisStr === 'Z') {
-                                        posArray[i * 3 + 2] += d * S;
-                                    } else { // Normal
-                                        const nx = geometryRef.current.attributes.normal ? geometryRef.current.attributes.normal.array[i * 3] : 0;
-                                        const ny = geometryRef.current.attributes.normal ? geometryRef.current.attributes.normal.array[i * 3 + 1] : 0;
-                                        const nz = geometryRef.current.attributes.normal ? geometryRef.current.attributes.normal.array[i * 3 + 2] : 0;
-                                        posArray[i * 3] += d * S * nx;
-                                        posArray[i * 3 + 1] += d * S * ny;
-                                        posArray[i * 3 + 2] += d * S * nz;
-                                    }
-                                    mag = Math.abs(d);
-                                } else if (dofsPerNode === 3) {
-                                    const dx = displacement[i * 3];
-                                    const dy = displacement[i * 3 + 1];
-                                    const dz = displacement[i * 3 + 2];
-                                    posArray[i * 3]     = restPositions[i * 3]     + dx * S;
-                                    posArray[i * 3 + 1] = restPositions[i * 3 + 1] + dy * S;
-                                    posArray[i * 3 + 2] = restPositions[i * 3 + 2] + dz * S;
-                                    mag = Math.sqrt(dx*dx + dy*dy + dz*dz);
-                                }
-                                magnitudes[i] = mag;
-                                if (mag < minMag) minMag = mag;
-                                if (mag > maxMag) maxMag = mag;
-                            }
-                            geometryRef.current.attributes.position.needsUpdate = true;
-                            
-                            const range = maxMag - minMag;
-                            const invRange = range > 1e-10 ? 1.0 / range : 0;
-                            for (let i = 0; i < engine.numNodes; i++) {
-                                const normalized = (magnitudes[i] - minMag) * invRange;
-                                const [r, g, b] = jetColormap(normalized);
-                                colorArray[i * 3]     = r;
-                                colorArray[i * 3 + 1] = g;
-                                colorArray[i * 3 + 2] = b;
-                            }
-                            geometryRef.current.attributes.color.needsUpdate = true;
-                            setColorRange({ min: minMag, max: maxMag });
-
-                            if (selectedNodeRef.current && engine) {
-                                const kin = engine.getScopedKinematics(selectedNodeRef.current.dofIndex);
-                                timeBuf.current.push(t);
-                                dispBuf.current.push(kin.position);
-                                velBuf.current.push(kin.velocity);
-                                accBuf.current.push(kin.acceleration);
-                                setPlotData({
-                                    time: timeBuf.current.toArray(),
-                                    displacement: dispBuf.current.toArray(),
-                                    velocity: velBuf.current.toArray(),
-                                    acceleration: accBuf.current.toArray(),
-                                });
-                            }
-                        }
-                    }}
-                    style={{ flexGrow: 1 }}
-                />
-                <span ref={timeDisplayRef} style={{ width: '80px', fontFamily: 'monospace' }}>t = 0.000s</span>
-                
-                {selectedNodeInfo && (
-                    <div style={{ padding: '4px 8px', fontSize: '12px', color: '#00ff88', fontFamily: 'monospace', border: '1px solid #00ff88', borderRadius: '4px', marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
-                        Selected: Node {selectedNodeInfo.nodeId} (DOF {selectedNodeInfo.dofIndex})
-                        <button onClick={handleClearSelection} style={{ marginLeft: '8px', fontSize: '11px', cursor: 'pointer', background: 'transparent', color: '#00ff88', border: 'none' }}>✕</button>
-                    </div>
-                )}
-            </div>
-
-            {engine && (
-                <div className="simulation-parameters" style={{ padding: '16px', borderTop: '1px solid #444', backgroundColor: '#1e1e1e', color: '#fff', fontSize: '14px' }}>
-                    <h3 style={{ marginTop: 0, marginBottom: '12px' }}>Simulation Parameters</h3>
-                    
-                    <div style={{ display: 'flex', gap: '20px', marginBottom: '16px', flexWrap: 'wrap' }}>
-                        {(engine.totalDofs / engine.numNodes) === 1 && (
-                            <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                Deformation Axis:
-                                <select value={selectedAxisUI} onChange={handleAxisChange} style={{ padding: '4px' }}>
-                                    <option value="Normal">Normal</option>
-                                    <option value="X">X-Axis</option>
-                                    <option value="Y">Y-Axis</option>
-                                    <option value="Z">Z-Axis</option>
-                                </select>
-                            </label>
-                        )}
-                        <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            Mode:
-                            <select value={selectedModeIndex} onChange={handleModeChange} style={{ padding: '4px' }}>
-                                <option value="all">All Modes (Superposition)</option>
-                                {engine.frequenciesHz && engine.frequenciesHz.map((freq, idx) => (
-                                    <option key={idx} value={idx}>
-                                        Mode {idx + 1} — {freq.toFixed(2)} Hz
-                                    </option>
-                                ))}
-                            </select>
-                        </label>
-                        
-                        <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
-                            Exaggeration Scale (S): {exaggerationScale.toFixed(1)}
-                            <input
-                                type="range"
-                                min="0.1"
-                                max="100"
-                                step="0.1"
-                                value={exaggerationScale}
-                                onChange={(e) => handleExaggerationChange(parseFloat(e.target.value))}
-                            />
-                        </label>
-
-                        <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            Damping Ratio (ζ):
-                            <input
-                                type="number"
-                                min="0"
-                                max="1"
-                                step="0.01"
-                                value={dampingRatio}
-                                onChange={(e) => handleDampingChange(parseFloat(e.target.value))}
-                                style={{ padding: '4px', width: '80px' }}
-                            />
-                        </label>
-                    </div>
-
-                    <div>
-                        <h4 style={{ margin: '0 0 8px 0' }}>Initial Conditions</h4>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px', marginBottom: '12px' }}>
-                            {icDisplacements.map((_, i) => (
-                                <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                    <span style={{ minWidth: '40px' }}>DOF {i}:</span>
-                                    <input
-                                        type="number"
-                                        step="0.1"
-                                        placeholder="d₀"
-                                        value={icDisplacements[i] ?? 0}
-                                        onChange={(e) => handleICChange('d0', i, parseFloat(e.target.value))}
-                                        style={{ width: '60px', padding: '4px' }}
-                                    />
-                                    <input
-                                        type="number"
-                                        step="0.1"
-                                        placeholder="v₀"
-                                        value={icVelocities[i] ?? 0}
-                                        onChange={(e) => handleICChange('v0', i, parseFloat(e.target.value))}
-                                        style={{ width: '60px', padding: '4px' }}
-                                    />
-                                </div>
-                            ))}
-                        </div>
-                        <button onClick={handleApplyIC} style={{ padding: '6px 12px' }}>Apply Initial Conditions</button>
-                    </div>
-                </div>
-            )}
-
-            {selectedNodeInfo && plotData && (
-                <KinematicPlots
-                    timeData={plotData.time}
-                    displacementData={plotData.displacement}
-                    velocityData={plotData.velocity}
-                    accelerationData={plotData.acceleration}
-                    nodeId={selectedNodeInfo.nodeId}
-                />
-            )}
-        </div>
+        <div 
+            ref={mountRef} 
+            style={{ position: 'absolute', inset: 0, outline: 'none' }} 
+        />
     );
 }

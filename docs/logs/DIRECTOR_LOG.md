@@ -257,3 +257,14 @@ Three new feature specs were generated:
 
 ---
 
+### 2026-05-13 — FEAT-UI-006 Planning: Playback Controls Positioning
+
+**Action:** Issued Work Order  
+**Details:** Audited the implemented UI components and noted that while the `AnimationControls.jsx` logic (Play/Pause/Stop/Scrub) was perfectly integrated by the Code Engineer (FEAT-UI-003), the component lacked the absolute CSS positioning required to float it at the bottom-center of the viewport.
+
+Created `FEAT-UI-006_PLAYBACK_OVERLAY.md` assigned directly to the **UI Agent** to handle the `.animation-controls` absolute positioning in `index.css`. 
+
+**Affected Agents:** UI Agent (assigned)
+
+---
+

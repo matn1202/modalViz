@@ -143,13 +143,14 @@
 
 | Feature | File(s) | Owner | Status | Notes |
 |---|---|---|---|---|
-| Design System & Global Styles | `index.css`, `App.css` | 🎨 UI Agent | ❌ Not started | FEAT-UI-001 |
-| App Shell & Routing | `App.jsx`, `ModalVizApp.jsx` | ⚙️ Engineer | ❌ Not started | FEAT-UI-002 |
-| Landing Page (File Ingestion) | `LandingPage.jsx` | ⚙️ Engineer + 🎨 UI | ❌ Not started | FEAT-UI-002 |
+| Design System & Global Styles | `index.css`, `App.css` | 🎨 UI Agent | ✅ Done | FEAT-UI-001 |
+| App Shell & Routing | `App.jsx`, `ModalVizApp.jsx` | ⚙️ Engineer | ✅ Done | FEAT-UI-002 |
+| Landing Page (File Ingestion) | `LandingPage.jsx` | ⚙️ Engineer + 🎨 UI | ✅ Done | FEAT-UI-002 |
 | WebGLViewport Refactoring | `WebGLViewport.jsx` | ⚙️ Engineer | ❌ Not started | FEAT-UI-005 |
-| Workspace Toolbar & Controls | `Toolbar.jsx`, `AnimationControls.jsx` | ⚙️ Engineer + 🎨 UI | ❌ Not started | FEAT-UI-003 |
-| Context Menu & Plot Windows | `ContextMenu.jsx`, `PlotWindow.jsx` | ⚙️ Engineer + 🎨 UI | ❌ Not started | FEAT-UI-004 |
-| ColorBar Repositioning | `ColorBarLegend.jsx` | ⚙️ Engineer | ❌ Not started | FEAT-UI-004 |
+| Workspace Toolbar & Controls | `Toolbar.jsx`, `AnimationControls.jsx` | ⚙️ Engineer + 🎨 UI | ✅ Done | FEAT-UI-003 |
+| Context Menu & Plot Windows | `ContextMenu.jsx`, `PlotWindow.jsx` | ⚙️ Engineer + 🎨 UI | ✅ Done | FEAT-UI-004 |
+| ColorBar Repositioning | `ColorBarLegend.jsx` | ⚙️ Engineer | ✅ Done | FEAT-UI-004 |
+| Playback Controls Overlay | `index.css`, `AnimationControls.jsx` | 🎨 UI Agent | ✅ Done | FEAT-UI-006 |
 
 ---
 
@@ -193,3 +194,4 @@
 3. **FEAT-UI-005** — WebGLViewport Refactoring (⚙️ Engineer)
 4. **FEAT-UI-003** — Workspace Toolbar & Controls (⚙️ Engineer + 🎨 UI Agent)
 5. **FEAT-UI-004** — Context Menu & Plot Windows (⚙️ Engineer + 🎨 UI Agent)
+6. **FEAT-UI-006** — Playback Controls Overlay Positioning (🎨 UI Agent)

@@ -222,3 +222,69 @@ Awaiting first work order from Director for Phase 3 implementation.
 **Notes:** Replaced the previous hardcoded `axisOffset` fix with a smarter default logic: it initializes to `Normal` if a 2D mesh is generated, otherwise it defaults to the `shapeAxis` provided by the DataIngestionWizard. Since `useRef` is used for the active axis, changing the dropdown applies immediately to the 60fps loop without forcing a React re-render of the canvas.
 
 ---
+
+### 2026-05-13 — FEAT-UI-002: App Shell & Landing Page
+
+**Task:** Feature  
+**Work Order From:** Director  
+**Spec From:** `docs/feats/FEAT-UI-002_APP_SHELL.md`  
+**Files Modified:**
+- `src/App.jsx` — Updated to render `<ModalVizApp />` instead of `<TestHarness2 />`.
+- `src/ModalVizApp.jsx` — Created top-level layout controller and state holder managing core state and rendering logic for Workspace vs Landing Page. Contains engine initialization migrated from `TestHarness2.jsx`.
+- `src/LandingPage.jsx` — Created full-screen file ingestion view featuring drag-and-drop zone, UI visual states, and column mapping logic based on `DataIngestionWizard`.
+
+**Build Status:** ✅ Passes (`npm run build` — 36 modules, 0 errors)  
+**Tests:** Verified Vite build success. Visual inspection of Landing Page structure setup for UI Agent. Drag & Drop logic integrated.
+**Notes:** The code is structurally complete, enabling the UI Agent to proceed with visual polish and styling.
+
+---
+
+### 2026-05-13 — FEAT-UI-005: WebGLViewport Refactoring
+
+**Task:** Refactor  
+**Work Order From:** Director  
+**Spec From:** `docs/feats/FEAT-UI-005_VIEWPORT_REFACTOR.md`  
+**Files Modified:**
+- `src/engine/WebGLViewport.jsx` — Stripped all UI components (playback controls, simulation parameters, kinematic plots). Component reduced from 827 lines to a pure ~470-line rendering surface. Implemented clean prop interface for passing refs and callbacks. Added right-click context menu event capture.
+- `src/ModalVizApp.jsx` — Lifted all required simulation state, playback refs, and the `ColorBarLegend` up to this shell component. Passed refs down to the viewport.
+
+**Build Status:** ✅ Passes (`npm run build` — 33 modules, 0 errors)  
+**Tests:** Verified that stripping UI dependencies did not break the Three.js viewport execution. `npm run build` succeeded perfectly.
+**Notes:** The viewport is now cleanly decoupled from its controls, making it ready for integration with the Workspace Toolbar (FEAT-UI-003) and Context Plot Windows (FEAT-UI-004).
+
+---
+
+### 2026-05-13 — FEAT-UI-003: Workspace Toolbar & Controls
+
+**Task:** Feature  
+**Work Order From:** Director  
+**Spec From:** `docs/feats/FEAT-UI-003_WORKSPACE_CONTROLS.md`  
+**Files Modified:**
+- `src/Toolbar.jsx` — Created the compact top toolbar rendering mode selection, axis, exaggeration scale, damping ratio, node selection badges, and an Initial Conditions popover. Includes baseline `.glass-panel` structure.
+- `src/AnimationControls.jsx` — Created the floating playback pill rendering the timeline slider and play/pause controls.
+- `src/ModalVizApp.jsx` — Wired the new components into the app shell. Managed playback state (`isPlaying`), simulation parameters state, and orchestrated callbacks for node selection clears and initial condition application.
+- `src/engine/WebGLViewport.jsx` — Added custom window event listeners (`clearNodeSelection` and `resetDeformation`) to cleanly handle state resets triggered from outside the canvas.
+
+**Build Status:** ✅ Passes (`npm run build` — 35 modules, 0 errors)  
+**Tests:** Verified state propagation. Build succeeds with the new components integrated into the shell.
+**Notes:** The workspace is structurally complete for all UI controls. It is now ready for the UI Agent to apply visual polish to the toolbar elements.
+
+---
+
+### 2026-05-13 — FEAT-UI-004: Context Menu & Plot Windows
+
+**Task:** Feature  
+**Work Order From:** Director  
+**Spec From:** `docs/feats/FEAT-UI-004_CONTEXT_PLOTS.md`  
+**Files Modified:**
+- `src/ContextMenu.jsx` — Created a floating context menu triggered by right-clicking a node, offering plotting options for Position, Velocity, and Acceleration.
+- `src/PlotWindow.jsx` — Implemented draggable, glassmorphic window panels. Utilizes `Plotly.react` and internal `RollingBuffer` instances for high-performance 10Hz kinematics plotting. Registers imperative hooks via `plotWindowRefs`.
+- `src/ModalVizApp.jsx` — Managed state for `plotWindows` array and `contextMenuState`. Implemented trace toggling, new window spawning, and a global `Escape` key listener for rapid cleanup.
+- `src/engine/WebGLViewport.jsx` — Modified the animation loop's plot data feed mechanism to push kinematic data to *all* active `PlotWindow` instances sequentially rather than restricting the feed strictly to the left-clicked node.
+- `src/engine/ColorBarLegend.jsx` — Refactored to a compact vertical orientation in the top-left corner with a rotated label.
+
+**Build Status:** ✅ Passes (`npm run build` — 39 modules, 0 errors)  
+**Tests:** Verified multi-window trace plotting, drag boundaries, and context menu behaviors without animation loop throttling.
+**Notes:** The project has fully transitioned away from legacy `KinematicPlots` to an immersive, floating, multi-node tracking system. Ready for UI Agent refinement.
+
+---
