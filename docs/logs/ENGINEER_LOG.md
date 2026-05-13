@@ -128,3 +128,21 @@ Awaiting first work order from Director for Phase 3 implementation.
 **Notes:** Computed `dofIndex` dynamically based on `engine.totalDofs / engine.numNodes` to future-proof 1-DOF vs 3-DOF per node geometries. Kept performance high by tracking highlight mesh coordinates directly alongside vertex updates in the animate loop rather than via React state.
 
 ---
+
+### 2026-05-12 — FEAT-P4-002: Plotly.js Integration & 2D Kinematic Plots
+
+**Task:** Feature  
+**Work Order From:** Director  
+**Spec From:** `docs/feats/FEAT-P4-002_PLOTLY_INTEGRATION.md`  
+**Files Modified:**
+- `package.json` — Installed `plotly.js-dist-min`.
+- `src/engine/RollingBuffer.js` — [NEW] Created fixed-capacity circular buffer utility using `Float64Array`.
+- `src/engine/KinematicPlots.jsx` — [NEW] Created React component rendering three synchronized Plotly charts.
+- `src/engine/WebGLViewport.jsx` — Instantiated rolling buffers, extracted scoped kinematics during animation, throttled chart updates to ~10 Hz (every 6 frames), and injected `KinematicPlots` to display live `u(t)`, `v(t)`, and `a(t)`.
+- `src/test/testRollingBuffer.js` — [NEW] Added unit tests for circular buffer logic.
+
+**Build Status:** ✅ Passes  
+**Tests:** `testRollingBuffer.js` passed all 15 assertions. Built app successfully.
+**Notes:** Used `plotly.js-dist-min` to avoid massive bundle bloat. Throttled DOM updates via `Plotly.react` explicitly instead of generic state mapping to ensure the 60fps WebGL loop remains unaffected by 2D graph re-renders. Circular buffer correctly overrides old time-series data ensuring constant O(1) memory footprint.
+
+---

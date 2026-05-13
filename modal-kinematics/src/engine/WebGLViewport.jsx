@@ -3,6 +3,11 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { jetColormap } from './colormap.js';
 import ColorBarLegend from './ColorBarLegend.jsx';
+import { RollingBuffer } from './RollingBuffer.js';
+import KinematicPlots from './KinematicPlots.jsx';
+
+// Rolling buffers for scoped kinematic data
+const BUFFER_CAPACITY = 500; // ~8 seconds of data at 60fps
 
 export default function WebGLViewport({ geometryData, engine }) {
     const mountRef = useRef(null);
@@ -14,6 +19,12 @@ export default function WebGLViewport({ geometryData, engine }) {
     const selectedNodeRef = useRef(null);
     const highlightMeshRef = useRef(null);
     const [selectedNodeInfo, setSelectedNodeInfo] = useState(null);
+
+    const timeBuf = useRef(new RollingBuffer(BUFFER_CAPACITY));
+    const dispBuf = useRef(new RollingBuffer(BUFFER_CAPACITY));
+    const velBuf = useRef(new RollingBuffer(BUFFER_CAPACITY));
+    const accBuf = useRef(new RollingBuffer(BUFFER_CAPACITY));
+    const [plotData, setPlotData] = useState(null);
 
     // Playback state
     const playbackStateRef = useRef('stopped'); // 'stopped' | 'playing' | 'paused'
@@ -204,10 +215,22 @@ export default function WebGLViewport({ geometryData, engine }) {
                 // Store selected node info
                 selectedNodeRef.current = { vertexIndex, nodeId, dofIndex };
                 setSelectedNodeInfo({ vertexIndex, nodeId, dofIndex });
+                
+                timeBuf.current.clear();
+                dispBuf.current.clear();
+                velBuf.current.clear();
+                accBuf.current.clear();
+                setPlotData(null);
             } else {
                 highlightMesh.visible = false;
                 selectedNodeRef.current = null;
                 setSelectedNodeInfo(null);
+                
+                timeBuf.current.clear();
+                dispBuf.current.clear();
+                velBuf.current.clear();
+                accBuf.current.clear();
+                setPlotData(null);
             }
         };
 
@@ -295,6 +318,27 @@ export default function WebGLViewport({ geometryData, engine }) {
                 if (frameCountRef.current % 10 === 0) {
                     setColorRange({ min: minMag, max: maxMag });
                 }
+
+                // --- SCOPED KINEMATIC EXTRACTION (Phase 4) ---
+                if (selectedNodeRef.current && engine) {
+                    const dofIdx = selectedNodeRef.current.dofIndex;
+                    const kin = engine.getScopedKinematics(dofIdx);
+                    
+                    timeBuf.current.push(simTimeRef.current);
+                    dispBuf.current.push(kin.position);
+                    velBuf.current.push(kin.velocity);
+                    accBuf.current.push(kin.acceleration);
+                    
+                    // Throttle Plotly updates to every 6 frames (~10 Hz at 60fps)
+                    if (frameCountRef.current % 6 === 0) {
+                        setPlotData({
+                            time: timeBuf.current.toArray(),
+                            displacement: dispBuf.current.toArray(),
+                            velocity: velBuf.current.toArray(),
+                            acceleration: accBuf.current.toArray(),
+                        });
+                    }
+                }
                 
                 if (timeDisplayRef.current) {
                     timeDisplayRef.current.textContent = `t = ${simTimeRef.current.toFixed(3)}s`;
@@ -357,6 +401,12 @@ export default function WebGLViewport({ geometryData, engine }) {
         selectedNodeRef.current = null;
         setSelectedNodeInfo(null);
         if (highlightMeshRef.current) highlightMeshRef.current.visible = false;
+        
+        timeBuf.current.clear();
+        dispBuf.current.clear();
+        velBuf.current.clear();
+        accBuf.current.clear();
+        setPlotData(null);
     };
 
     const handlePlay = () => {
@@ -386,6 +436,12 @@ export default function WebGLViewport({ geometryData, engine }) {
             }
             geometryRef.current.attributes.color.needsUpdate = true;
             setColorRange({ min: 0, max: 0 });
+            
+            timeBuf.current.clear();
+            dispBuf.current.clear();
+            velBuf.current.clear();
+            accBuf.current.clear();
+            setPlotData(null);
         }
     };
 
@@ -516,6 +572,20 @@ export default function WebGLViewport({ geometryData, engine }) {
                             }
                             geometryRef.current.attributes.color.needsUpdate = true;
                             setColorRange({ min: minMag, max: maxMag });
+
+                            if (selectedNodeRef.current && engine) {
+                                const kin = engine.getScopedKinematics(selectedNodeRef.current.dofIndex);
+                                timeBuf.current.push(t);
+                                dispBuf.current.push(kin.position);
+                                velBuf.current.push(kin.velocity);
+                                accBuf.current.push(kin.acceleration);
+                                setPlotData({
+                                    time: timeBuf.current.toArray(),
+                                    displacement: dispBuf.current.toArray(),
+                                    velocity: velBuf.current.toArray(),
+                                    acceleration: accBuf.current.toArray(),
+                                });
+                            }
                         }
                     }}
                     style={{ flexGrow: 1 }}
@@ -601,6 +671,16 @@ export default function WebGLViewport({ geometryData, engine }) {
                         <button onClick={handleApplyIC} style={{ padding: '6px 12px' }}>Apply Initial Conditions</button>
                     </div>
                 </div>
+            )}
+
+            {selectedNodeInfo && plotData && (
+                <KinematicPlots
+                    timeData={plotData.time}
+                    displacementData={plotData.displacement}
+                    velocityData={plotData.velocity}
+                    accelerationData={plotData.acceleration}
+                    nodeId={selectedNodeInfo.nodeId}
+                />
             )}
         </div>
     );
