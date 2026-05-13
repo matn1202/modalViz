@@ -1,0 +1,56 @@
+# ModalViz — Line Ending Normalization
+# Ensures LF in the repo, native line endings on checkout.
+
+# Global default: auto-detect text files → normalize to LF
+* text=auto
+
+# ── Source code ──────────────────────────────────────
+*.js         text eol=lf
+*.jsx        text eol=lf
+*.ts         text eol=lf
+*.tsx        text eol=lf
+*.mjs        text eol=lf
+*.cjs        text eol=lf
+
+# ── Styles ───────────────────────────────────────────
+*.css        text eol=lf
+*.scss       text eol=lf
+
+# ── Markup & config ──────────────────────────────────
+*.html       text eol=lf
+*.json       text eol=lf
+*.md         text eol=lf
+*.yaml       text eol=lf
+*.yml        text eol=lf
+*.toml       text eol=lf
+
+# ── Data / test fixtures ────────────────────────────
+*.csv        text eol=lf
+*.txt        text eol=lf
+
+# ── Shell & tooling ─────────────────────────────────
+*.sh         text eol=lf
+*.bash       text eol=lf
+*.bat        text eol=crlf
+*.cmd        text eol=crlf
+*.ps1        text eol=crlf
+
+# ── Git / editor config ─────────────────────────────
+.gitattributes  text eol=lf
+.gitignore      text eol=lf
+.editorconfig   text eol=lf
+
+# ── Binary files (no normalization) ─────────────────
+*.png        binary
+*.jpg        binary
+*.jpeg       binary
+*.gif        binary
+*.ico        binary
+*.webp       binary
+*.svg        text eol=lf
+*.woff       binary
+*.woff2      binary
+*.ttf        binary
+*.eot        binary
+*.pdf        binary
+*.zip        binary
