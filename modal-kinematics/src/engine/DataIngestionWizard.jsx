@@ -1,14 +1,16 @@
 import React, { useState, useCallback } from 'react';
 import Papa from 'papaparse';
 
-const REQUIRED_MAPPINGS = [
+const MAPPING_ROLES = [
     "Node ID", 
     "X-Coordinate", 
     "Y-Coordinate", 
     "Z-Coordinate", 
     "Frequency", 
-    "Modal Shape Value"
-]; // [cite: 123]
+    "Shape UX",
+    "Shape UY",
+    "Shape UZ"
+];
 
 export default function DataIngestionWizard({ onDataParsed }) {
     const [file, setFile] = useState(null);
@@ -48,10 +50,16 @@ export default function DataIngestionWizard({ onDataParsed }) {
     const handleProcessData = useCallback(() => {
         // Validate that all required mappings are assigned [cite: 124]
         const assignedRoles = Object.values(columnMappings);
-        const missingRoles = REQUIRED_MAPPINGS.filter(role => !assignedRoles.includes(role));
+        const requiredCore = ["Node ID", "X-Coordinate", "Y-Coordinate", "Z-Coordinate", "Frequency"];
+        const missingCore = requiredCore.filter(role => !assignedRoles.includes(role));
+        
+        const hasShape = assignedRoles.includes("Shape UX") || assignedRoles.includes("Shape UY") || assignedRoles.includes("Shape UZ");
 
-        if (missingRoles.length > 0) {
-            setError(`Missing required columns: ${missingRoles.join(', ')}`);
+        if (missingCore.length > 0 || !hasShape) {
+            const errorMsg = missingCore.length > 0 
+                ? `Missing required columns: ${missingCore.join(', ')}` 
+                : `Must map at least one shape column (Shape UX, Shape UY, or Shape UZ)`;
+            setError(errorMsg);
             return;
         }
 
@@ -87,12 +95,18 @@ const processRawDataToBuffers = (rawData, indexMap) => {
         const numRows = numericData.length;
         
         // Allocate contiguous memory blocks
+        const hasUX = "Shape UX" in indexMap;
+        const hasUY = "Shape UY" in indexMap;
+        const hasUZ = "Shape UZ" in indexMap;
+        const numShapesMapped = (hasUX ? 1 : 0) + (hasUY ? 1 : 0) + (hasUZ ? 1 : 0);
+        const dofsPerNode = numShapesMapped > 1 ? 3 : 1;
+
         const nodes = new Int32Array(numRows);
         const xCoords = new Float32Array(numRows);
         const yCoords = new Float32Array(numRows);
         const zCoords = new Float32Array(numRows);
         const frequencies = new Float32Array(numRows);
-        const modeShapes = new Float32Array(numRows);
+        const modeShapes = new Float32Array(numRows * dofsPerNode);
 
         for (let i = 0; i < numRows; i++) {
             const row = numericData[i];
@@ -101,12 +115,30 @@ const processRawDataToBuffers = (rawData, indexMap) => {
             yCoords[i] = row[indexMap["Y-Coordinate"]];
             zCoords[i] = row[indexMap["Z-Coordinate"]];
             frequencies[i] = row[indexMap["Frequency"]];
-            modeShapes[i] = row[indexMap["Modal Shape Value"]];
+            
+            if (dofsPerNode === 1) {
+                if (hasUX) modeShapes[i] = row[indexMap["Shape UX"]];
+                else if (hasUY) modeShapes[i] = row[indexMap["Shape UY"]];
+                else if (hasUZ) modeShapes[i] = row[indexMap["Shape UZ"]];
+            } else {
+                modeShapes[i * 3] = hasUX ? row[indexMap["Shape UX"]] : 0.0;
+                modeShapes[i * 3 + 1] = hasUY ? row[indexMap["Shape UY"]] : 0.0;
+                modeShapes[i * 3 + 2] = hasUZ ? row[indexMap["Shape UZ"]] : 0.0;
+            }
+        }
+
+        // Determine which spatial axis the 1-DOF shape data represents
+        // so downstream components displace nodes along the correct axis
+        let shapeAxis = 'x'; // default
+        if (dofsPerNode === 1) {
+            if (hasUX) shapeAxis = 'x';
+            else if (hasUY) shapeAxis = 'y';
+            else if (hasUZ) shapeAxis = 'z';
         }
 
         setIsParsing(false);
         // Pass the optimized buffers up to the Controller/State Manager
-        onDataParsed({ nodes, xCoords, yCoords, zCoords, frequencies, modeShapes });
+        onDataParsed({ nodes, xCoords, yCoords, zCoords, frequencies, modeShapes, dofsPerNode, shapeAxis });
 
     } catch (err) {
         setError(`Buffer Allocation Error: ${err.message}`);
@@ -134,7 +166,7 @@ const processRawDataToBuffers = (rawData, indexMap) => {
                                             defaultValue=""
                                         >
                                             <option value="" disabled>Select Role...</option>
-                                            {REQUIRED_MAPPINGS.map(role => (
+                                            {MAPPING_ROLES.map(role => (
                                                 <option key={role} value={role}>{role}</option>
                                             ))}
                                         </select>

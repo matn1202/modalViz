@@ -126,15 +126,15 @@
 
 | Feature | File | Status | Notes |
 |---|---|---|---|
-| Multi-DOF CSV Mapping | `DataIngestionWizard.jsx` | ❌ Not started | Map up to 3 modal shape columns (FEAT-P5-001) |
-| Multi-DOF Engine Init | `TestHarness2.jsx` | ❌ Not started | Initialize engine with 1 or 3 dofsPerNode (FEAT-P5-001) |
-| Dimensionality Heuristic | `WebGLViewport.jsx` | ❌ Not started | Detect 1D (beam) vs 2D (plate) via variance (FEAT-P5-002) |
-| 1D Auto-Topology (Lines) | `WebGLViewport.jsx` | ❌ Not started | Generate `THREE.LineSegments` for 1D datasets (FEAT-P5-002) |
-| 2D Auto-Topology (Faces) | `WebGLViewport.jsx` | ❌ Not started | Generate `THREE.Mesh` via Delaunay triangulation (FEAT-P5-002) |
-| Selectable Displ. Axis | `WebGLViewport.jsx` | ❌ Not started | UI to select X, Y, Z, or Normal for 1-DOF data (FEAT-P5-003) |
-| Normal-based deformation | `WebGLViewport.jsx` | ❌ Not started | Displace nodes along surface normal (FEAT-P5-003) |
+| Multi-DOF CSV Mapping | `DataIngestionWizard.jsx` | ✅ Done | Map up to 3 modal shape columns (FEAT-P5-001) |
+| Multi-DOF Engine Init | `TestHarness2.jsx` | ✅ Done | Initialize engine with 1 or 3 dofsPerNode (FEAT-P5-001) |
+| Dimensionality Heuristic | `WebGLViewport.jsx` | ✅ Done | Detect 1D (beam) vs 2D (plate) via variance (FEAT-P5-002) |
+| 1D Auto-Topology (Lines) | `WebGLViewport.jsx` | ✅ Done | Generate `THREE.LineSegments` for 1D datasets (FEAT-P5-002) |
+| 2D Auto-Topology (Faces) | `WebGLViewport.jsx` | ✅ Done | Generate `THREE.Mesh` via Delaunay triangulation (FEAT-P5-002) |
+| Selectable Displ. Axis | `WebGLViewport.jsx` | ✅ Done | UI to select X, Y, Z, or Normal for 1-DOF data (FEAT-P5-003) |
+| Normal-based deformation | `WebGLViewport.jsx` | ✅ Done | Displace nodes along surface normal (FEAT-P5-003) |
 
-**Phase 5 verdict: ❌ NOT STARTED**
+**Phase 5 verdict: ✅ COMPLETE** — Generalization features, selectable axis, and auto-topology are fully implemented.
 
 ---
 
@@ -168,7 +168,7 @@
 | **Phase 2** | 3D Engine Construction | ⚠️ **~90%** (point cloud only, no mesh faces) |
 | **Phase 3** | Animation, Contour, Transients | ✅ **Complete** |
 | **Phase 4** | Raycasting & 2D Plots | ✅ **Complete** |
-| **Phase 5** | Generalization & Topology | ❌ **0%** |
+| **Phase 5** | Generalization & Topology | ✅ **Complete** |
 | **UI/UX** | Production layout & styling | ❌ **0%** |
 | **State Mgmt** | Redux / Zustand integration | ❌ **0%** |
 

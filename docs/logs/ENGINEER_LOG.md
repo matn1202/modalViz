@@ -147,4 +147,78 @@ Awaiting first work order from Director for Phase 3 implementation.
 
 ---
 
+### 2026-05-13 — FEAT-P5-001: Multi-DOF Column Mapping
 
+**Task:** Feature  
+**Work Order From:** Director  
+**Spec From:** `docs/feats/FEAT-P5-001_MULTI_DOF_INGESTION.md`  
+**Files Modified:**
+- `src/engine/DataIngestionWizard.jsx` — Updated MAPPING_ROLES to include Shape UX, UY, UZ. Altered validation to ensure at least one shape is present. Modified `processRawDataToBuffers` to detect 1-DOF vs 3-DOF and interleave buffer accordingly. Added `dofsPerNode` to `onDataParsed` callback.
+- `src/test/TestHarness.jsx` — Updated to consume `buffers.dofsPerNode` when extracting mode shapes and initializing `ModalKinematicsEngine`.
+- `src/test/TestHarness2.jsx` — Updated similarly to consume `buffers.dofsPerNode` for 3D simulation context.
+
+**Build Status:** ✅ Passes (`npm run build` — 0 errors)  
+**Tests:** Verified logic supports loading 1-DOF and 3-DOF data gracefully without breaking the build.  
+**Notes:** 3-DOF data requires the mode shapes array to be `numRows * 3`. The logic interleaves UX, UY, UZ, padding unmapped coordinates with 0.0 to satisfy 3-DOF Engine instantiation requirements.
+
+---
+
+### 2026-05-13 — FIX: X-Axis Only Movement on 3-DOF Data
+
+**Task:** Bug Fix
+**Work Order From:** Director
+**Files Modified:**
+- `src/test/TestHarness.jsx`
+- `src/test/TestHarness2.jsx`
+- `src/engine/WebGLViewport.jsx`
+
+**Build Status:** ✅ Passes (`npm run build` — 0 errors)
+**Tests:** Verified IC application across all DOFs.
+**Notes:** Discovered that 3-DOF data was only displacing on the X-axis because the initial condition arrays (`d0`) were hardcoded to only displace the `[0]` index (UX of Node 0). The mode superposition was only excited along the X-axis for orthogonal modes. Modified the code to dynamically apply a 1.0 unit displacement to all DOFs of Node 0 based on `dofsPerNode`, which properly excites the UY and UZ components for multi-DOF animations. Also updated `WebGLViewport` to refresh the `icDisplacements` state when the engine changes (e.g. from 1-DOF to 3-DOF).
+
+---
+
+### 2026-05-13 — FIX: 1-DOF Displacement Axis Hardcoded to X
+
+**Task:** Bug Fix  
+**Work Order From:** Director (audit of FEAT-P5-001)  
+**Files Modified:**
+- `src/engine/DataIngestionWizard.jsx` — Added `shapeAxis` field (values `'x'`, `'y'`, or `'z'`) to the `onDataParsed` callback payload. Determined from which single Shape column the user mapped in the 1-DOF case.
+- `src/engine/WebGLViewport.jsx` — Updated both the animate loop (line ~284) and the scrub handler (line ~542) to read `geometryData.shapeAxis` and compute an `axisOffset` (0/1/2) so the 1-DOF scalar displacement is applied to the correct spatial axis instead of always X. All three position components are now reset to rest positions before applying displacement to the target axis.
+
+**Root Cause:** `DataIngestionWizard` correctly detected which shape column was mapped but never communicated the axis to the viewport. `WebGLViewport` hardcoded `posArray[i * 3] += dx * S` (always X) for the 1-DOF branch.
+
+**Build Status:** ✅ Passes (`npm run build` — 29 modules, 0 errors)  
+**Tests:** Manual verification pending — mapping Shape UY should now deform along Y, Shape UZ along Z.  
+**Notes:** The fix is a two-part change: (1) ingestion passes `shapeAxis`, (2) viewport uses it. For 3-DOF data, `shapeAxis` is ignored since all three components are interleaved explicitly.
+
+---
+
+### 2026-05-13 — FEAT-P5-002: Auto-Topology Generation
+
+**Task:** Feature  
+**Work Order From:** Director  
+**Spec From:** `docs/feats/FEAT-P5-002_AUTO_TOPOLOGY.md`  
+**Files Modified:**
+- `package.json` — Installed `delaunator` dependency.
+- `src/engine/WebGLViewport.jsx` — Implemented dimensionality heuristic. Calculated coordinate variance to determine if data is 1D (Beam), 2D (Plate), or 3D. Used `THREE.LineSegments` with sorted index mapping for 1D. Used `Delaunator` projected along 2D variance plane for 2D meshes. Kept point cloud rendered as an overlay and correctly managed `geometry.setIndex` and material disposal.
+
+**Build Status:** ✅ Passes (`npm run build` — 36 modules, 0 errors)  
+**Tests:** Tested by ensuring logic handles 1D arrays by sorting primary axes and 2D arrays via Delaunay triangulation.  
+**Notes:** Added `topologyObject` and `topologyMaterial` alongside points. Using the shared `geometry` allows `points`, `lines`, and `mesh` to correctly share the same dynamically updated `position` and `color` arrays, ensuring the engine deformations cleanly propagate to the new topology without requiring independent position calculations.
+
+---
+
+### 2026-05-13 — FEAT-P5-003: Selectable Displacement Axis
+
+**Task:** Feature  
+**Work Order From:** Director  
+**Spec From:** `docs/feats/FEAT-P5-003_SELECTABLE_AXIS.md`  
+**Files Modified:**
+- `src/engine/WebGLViewport.jsx` — Added `selectedAxisUI` state and `selectedAxisRef` to track the user's selected deformation axis for 1-DOF datasets. Integrated `geometry.computeVertexNormals()` into the auto-topology setup so face normals are available for 2D meshes. Updated both the live animation and timeline scrubbing loops to dynamically project scalar displacement along the selected axis (X, Y, Z, or Normal). Added a new dropdown UI element in the Simulation Parameters panel that only appears for 1-DOF data.
+
+**Build Status:** ✅ Passes (`npm run build` — 36 modules, 0 errors)  
+**Tests:** Verified logic replaces the statically computed `axisOffset` with dynamic UI-driven selection. Checked logic pathing for undefined normals gracefully defaulting to 0.  
+**Notes:** Replaced the previous hardcoded `axisOffset` fix with a smarter default logic: it initializes to `Normal` if a 2D mesh is generated, otherwise it defaults to the `shapeAxis` provided by the DataIngestionWizard. Since `useRef` is used for the active axis, changing the dropdown applies immediately to the 60fps loop without forcing a React re-render of the canvas.
+
+---

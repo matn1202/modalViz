@@ -19,24 +19,31 @@ export default function TestHarness() {
         // In Phase 2, this logic will be slightly more robust based on DOF limits.
         const modeShapes = [];
         for(let j = 0; j < numModes; j++) {
-            // We're doing a 1D test, so 1 DOF per node
-            const shapeArray = new Float32Array(numNodes); 
+            const shapeArray = new Float32Array(numNodes * buffers.dofsPerNode); 
             let shapeIdx = 0;
-            for(let i = 0; i < buffers.modeShapes.length; i++) {
+            for(let i = 0; i < buffers.frequencies.length; i++) {
                 if(buffers.frequencies[i] === uniqueFreqs[j]) {
-                    shapeArray[shapeIdx] = buffers.modeShapes[i];
-                    shapeIdx++;
+                    if (buffers.dofsPerNode === 1) {
+                        shapeArray[shapeIdx] = buffers.modeShapes[i];
+                        shapeIdx++;
+                    } else {
+                        shapeArray[shapeIdx] = buffers.modeShapes[i * 3];
+                        shapeArray[shapeIdx + 1] = buffers.modeShapes[i * 3 + 1];
+                        shapeArray[shapeIdx + 2] = buffers.modeShapes[i * 3 + 2];
+                        shapeIdx += 3;
+                    }
                 }
             }
             modeShapes.push(shapeArray);
         }
 
         // 3. Initialize the Engine
-        const engine = new ModalKinematicsEngine(numNodes, 1, uniqueFreqs, modeShapes, 0.05);
+        const engine = new ModalKinematicsEngine(numNodes, buffers.dofsPerNode, uniqueFreqs, modeShapes, 0.05);
         
-        // 4. Apply Initial Conditions (Pull Node 0 by 1.0 unit)
-        const d0 = new Float32Array([1.0, 0.0]);
-        const v0 = new Float32Array([0.0, 0.0]);
+        // 4. Apply Initial Conditions (Pull Node 0 by 1.0 unit on all its DOFs)
+        const d0 = new Float32Array(engine.totalDofs);
+        for (let k = 0; k < buffers.dofsPerNode; k++) d0[k] = 1.0;
+        const v0 = new Float32Array(engine.totalDofs);
         engine.setInitialConditions(d0, v0);
 
         // 5. Run a brief simulation loop and log results

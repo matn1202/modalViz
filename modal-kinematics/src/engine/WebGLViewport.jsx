@@ -5,6 +5,7 @@ import { jetColormap } from './colormap.js';
 import ColorBarLegend from './ColorBarLegend.jsx';
 import { RollingBuffer } from './RollingBuffer.js';
 import KinematicPlots from './KinematicPlots.jsx';
+import Delaunator from 'delaunator';
 
 // Rolling buffers for scoped kinematic data
 const BUFFER_CAPACITY = 500; // ~8 seconds of data at 60fps
@@ -42,15 +43,25 @@ export default function WebGLViewport({ geometryData, engine }) {
     const [icDisplacements, setIcDisplacements] = useState([]);
     const [icVelocities, setIcVelocities] = useState([]);
 
+    // FEAT-P5-003: Selectable Axis
+    const [selectedAxisUI, setSelectedAxisUI] = useState('Normal');
+    const selectedAxisRef = useRef('Normal');
+    const handleAxisChange = (e) => {
+        const val = e.target.value;
+        setSelectedAxisUI(val);
+        selectedAxisRef.current = val;
+    };
+
     useEffect(() => {
-        if (engine && icDisplacements.length === 0) {
+        if (engine) {
+            const dofsPerNode = engine.totalDofs / engine.numNodes;
             const d0 = new Array(engine.totalDofs).fill(0);
-            d0[0] = 1.0; // match TestHarness default
+            for (let k = 0; k < dofsPerNode; k++) d0[k] = 1.0;
             setIcDisplacements(d0);
             setIcVelocities(new Array(engine.totalDofs).fill(0));
             setDampingRatio(engine.zeta);
         }
-    }, [engine, icDisplacements.length]);
+    }, [engine]);
 
     // Color mapping state
     const [colorRange, setColorRange] = useState({ min: 0, max: 0 });
@@ -144,6 +155,89 @@ export default function WebGLViewport({ geometryData, engine }) {
         // Assign the arrays to the geometry attributes
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        // --- NEW: FEAT-P5-002 Auto-Topology Generation ---
+        let minX = Infinity, maxX = -Infinity;
+        let minY = Infinity, maxY = -Infinity;
+        let minZ = Infinity, maxZ = -Infinity;
+        for (let i = 0; i < numNodes; i++) {
+            const x = positions[i * 3];
+            const y = positions[i * 3 + 1];
+            const z = positions[i * 3 + 2];
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+            if (z < minZ) minZ = z;
+            if (z > maxZ) maxZ = z;
+        }
+
+        const eps = 1e-6;
+        const hasX = (maxX - minX) > eps;
+        const hasY = (maxY - minY) > eps;
+        const hasZ = (maxZ - minZ) > eps;
+        const numDims = (hasX ? 1 : 0) + (hasY ? 1 : 0) + (hasZ ? 1 : 0);
+
+        if (numDims === 2) {
+            setSelectedAxisUI('Normal');
+            selectedAxisRef.current = 'Normal';
+        } else {
+            const axis = geometryData.shapeAxis ? geometryData.shapeAxis.toUpperCase() : 'Normal';
+            setSelectedAxisUI(axis);
+            selectedAxisRef.current = axis;
+        }
+
+        let topologyMaterial = null;
+        let topologyObject = null;
+
+        if (numDims === 1) {
+            // 1D Topology (Beam/Axial)
+            const primaryAxis = hasX ? 0 : (hasY ? 1 : 2);
+            const indicesWithPositions = [];
+            for (let i = 0; i < numNodes; i++) {
+                indicesWithPositions.push({ index: i, val: positions[i * 3 + primaryAxis] });
+            }
+            indicesWithPositions.sort((a, b) => a.val - b.val);
+            
+            const lineIndices = [];
+            for (let i = 0; i < numNodes - 1; i++) {
+                lineIndices.push(indicesWithPositions[i].index, indicesWithPositions[i+1].index);
+            }
+            
+            geometry.setIndex(lineIndices);
+            geometry.computeVertexNormals();
+            topologyMaterial = new THREE.LineBasicMaterial({
+                vertexColors: true,
+                linewidth: 2
+            });
+            topologyObject = new THREE.LineSegments(geometry, topologyMaterial);
+            scene.add(topologyObject);
+        } else if (numDims === 2) {
+            // 2D Topology (Plate/Shell)
+            const axes = [];
+            if (hasX) axes.push(0);
+            if (hasY) axes.push(1);
+            if (hasZ) axes.push(2);
+            
+            const coords = [];
+            for (let i = 0; i < numNodes; i++) {
+                coords.push(positions[i * 3 + axes[0]], positions[i * 3 + axes[1]]);
+            }
+            
+            const delaunay = new Delaunator(coords);
+            geometry.setIndex(Array.from(delaunay.triangles));
+            geometry.computeVertexNormals();
+            
+            topologyMaterial = new THREE.MeshStandardMaterial({
+                vertexColors: true,
+                side: THREE.DoubleSide,
+                roughness: 0.5,
+                metalness: 0.1
+            });
+            topologyObject = new THREE.Mesh(geometry, topologyMaterial);
+            scene.add(topologyObject);
+        }
+        // -------------------------------------------------
 
         // 4. Create the Material with vertexColors enabled [cite: 148, 151]
         const material = new THREE.PointsMaterial({
@@ -280,14 +374,31 @@ export default function WebGLViewport({ geometryData, engine }) {
                 let maxMag = -Infinity;
                 const magnitudes = new Float32Array(engine.numNodes);
 
+                const axisStr = selectedAxisRef.current;
+
                 for (let i = 0; i < engine.numNodes; i++) {
                     let mag = 0;
                     if (dofsPerNode === 1) {
-                        const dx = displacement[i];
-                        posArray[i * 3]     = restPositions[i * 3]     + dx * S;
-                        posArray[i * 3 + 1] = restPositions[i * 3 + 1]; 
-                        posArray[i * 3 + 2] = restPositions[i * 3 + 2]; 
-                        mag = Math.abs(dx);
+                        const d = displacement[i];
+                        posArray[i * 3]     = restPositions[i * 3];
+                        posArray[i * 3 + 1] = restPositions[i * 3 + 1];
+                        posArray[i * 3 + 2] = restPositions[i * 3 + 2];
+                        
+                        if (axisStr === 'X') {
+                            posArray[i * 3] += d * S;
+                        } else if (axisStr === 'Y') {
+                            posArray[i * 3 + 1] += d * S;
+                        } else if (axisStr === 'Z') {
+                            posArray[i * 3 + 2] += d * S;
+                        } else { // Normal
+                            const nx = geometryRef.current.attributes.normal ? geometryRef.current.attributes.normal.array[i * 3] : 0;
+                            const ny = geometryRef.current.attributes.normal ? geometryRef.current.attributes.normal.array[i * 3 + 1] : 0;
+                            const nz = geometryRef.current.attributes.normal ? geometryRef.current.attributes.normal.array[i * 3 + 2] : 0;
+                            posArray[i * 3] += d * S * nx;
+                            posArray[i * 3 + 1] += d * S * ny;
+                            posArray[i * 3 + 2] += d * S * nz;
+                        }
+                        mag = Math.abs(d);
                     } else if (dofsPerNode === 3) {
                         const dx = displacement[i * 3];
                         const dy = displacement[i * 3 + 1];
@@ -384,6 +495,7 @@ export default function WebGLViewport({ geometryData, engine }) {
             controls.dispose();
             geometry.dispose();
             material.dispose();
+            if (topologyMaterial) topologyMaterial.dispose();
             highlightGeometry.dispose();
             highlightMaterial.dispose();
             renderer.dispose();
@@ -538,14 +650,31 @@ export default function WebGLViewport({ geometryData, engine }) {
                             let maxMag = -Infinity;
                             const magnitudes = new Float32Array(engine.numNodes);
                             
+                            const axisStr = selectedAxisRef.current;
+
                             for (let i = 0; i < engine.numNodes; i++) {
                                 let mag = 0;
                                 if (dofsPerNode === 1) {
-                                    const dx = displacement[i];
-                                    posArray[i * 3]     = restPositions[i * 3]     + dx * S;
-                                    posArray[i * 3 + 1] = restPositions[i * 3 + 1]; 
-                                    posArray[i * 3 + 2] = restPositions[i * 3 + 2]; 
-                                    mag = Math.abs(dx);
+                                    const d = displacement[i];
+                                    posArray[i * 3]     = restPositions[i * 3];
+                                    posArray[i * 3 + 1] = restPositions[i * 3 + 1];
+                                    posArray[i * 3 + 2] = restPositions[i * 3 + 2];
+                                    
+                                    if (axisStr === 'X') {
+                                        posArray[i * 3] += d * S;
+                                    } else if (axisStr === 'Y') {
+                                        posArray[i * 3 + 1] += d * S;
+                                    } else if (axisStr === 'Z') {
+                                        posArray[i * 3 + 2] += d * S;
+                                    } else { // Normal
+                                        const nx = geometryRef.current.attributes.normal ? geometryRef.current.attributes.normal.array[i * 3] : 0;
+                                        const ny = geometryRef.current.attributes.normal ? geometryRef.current.attributes.normal.array[i * 3 + 1] : 0;
+                                        const nz = geometryRef.current.attributes.normal ? geometryRef.current.attributes.normal.array[i * 3 + 2] : 0;
+                                        posArray[i * 3] += d * S * nx;
+                                        posArray[i * 3 + 1] += d * S * ny;
+                                        posArray[i * 3 + 2] += d * S * nz;
+                                    }
+                                    mag = Math.abs(d);
                                 } else if (dofsPerNode === 3) {
                                     const dx = displacement[i * 3];
                                     const dy = displacement[i * 3 + 1];
@@ -604,7 +733,18 @@ export default function WebGLViewport({ geometryData, engine }) {
                 <div className="simulation-parameters" style={{ padding: '16px', borderTop: '1px solid #444', backgroundColor: '#1e1e1e', color: '#fff', fontSize: '14px' }}>
                     <h3 style={{ marginTop: 0, marginBottom: '12px' }}>Simulation Parameters</h3>
                     
-                    <div style={{ display: 'flex', gap: '20px', marginBottom: '16px' }}>
+                    <div style={{ display: 'flex', gap: '20px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                        {(engine.totalDofs / engine.numNodes) === 1 && (
+                            <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                Deformation Axis:
+                                <select value={selectedAxisUI} onChange={handleAxisChange} style={{ padding: '4px' }}>
+                                    <option value="Normal">Normal</option>
+                                    <option value="X">X-Axis</option>
+                                    <option value="Y">Y-Axis</option>
+                                    <option value="Z">Z-Axis</option>
+                                </select>
+                            </label>
+                        )}
                         <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                             Mode:
                             <select value={selectedModeIndex} onChange={handleModeChange} style={{ padding: '4px' }}>
