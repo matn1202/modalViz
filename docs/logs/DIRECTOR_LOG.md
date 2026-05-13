@@ -141,3 +141,60 @@ Each entry should follow this structure:
 **Affected Agents:** Code Engineer  
 
 ---
+
+### 2026-05-13 — Phase 4 Milestone Sign-Off: ✅ COMPLETE (Retroactive Audit)
+
+**Action:** Milestone Review & Sign-Off  
+**Details:** During a routine audit, discovered that Phase 4 work (FEAT-P4-001 + FEAT-P4-002) had been fully implemented but the tracker and agent logs were never updated. Performed a comprehensive verification against all acceptance criteria:
+
+| Feature | Status | Verification |
+|---|---|---|
+| FEAT-P4-001 (Raycasting & Node Selection) | ✅ Signed off | Raycaster initialized (threshold 0.1), click/drag discrimination (3px), highlight sphere (green, opacity 0.8), node ID resolution, deselection, animation-synced tracking — all code present in `WebGLViewport.jsx` lines 88–256. |
+| FEAT-P4-002 (Plotly.js Integration) | ✅ Signed off | `plotly.js-dist-min@^3.5.1` installed. `RollingBuffer.js` (62 lines) + `KinematicPlots.jsx` (115 lines) created. Data pipeline wired in animate loop (line 322–341) + scrub handler (line 576–588). Plotly throttled to ~10 Hz. Buffers cleared on stop/node change. |
+
+**Build verification:** `npm run build` → ✅ 29 modules, 0 errors.  
+**Unit tests:**
+- `testColormap.js` → 12 passed, 0 failed
+- `testEngineExtensions.js` → 7 passed, 0 failed  
+- `testRollingBuffer.js` → 15 passed, 0 failed
+- `testEx1.js` → ✅ Console output matches expected transient response
+
+**Total test assertions across all suites: 34 passed, 0 failed.**
+
+**Documentation corrective actions taken:**
+1. `PROJECT_TRACKER.md` — Phase 4 status updated from ❌ 0% → ✅ Complete. All 17 feature rows populated. Plotly.js dependency marked as installed. Summary dashboard updated. Audit date bumped to 2026-05-13. Module count updated to 29.
+2. `FEAT-P4-001_RAYCASTING.md` — Status changed from 🟡 Pending → ✅ Complete.
+3. `FEAT-P4-002_PLOTLY_INTEGRATION.md` — Status changed from 🟡 Pending → ✅ Complete.
+4. `ENGINEER_LOG.md` — Added detailed entries for both P4-001 and P4-002 implementation. Removed duplicate stale entries.
+
+**New file inventory (Phase 4 additions):**
+
+| File | Lines | Purpose |
+|---|---|---|
+| `src/engine/RollingBuffer.js` | 62 | Fixed-capacity Float64Array circular buffer |
+| `src/engine/KinematicPlots.jsx` | 115 | Three synchronized Plotly.js charts |
+| `src/test/testRollingBuffer.js` | ~95 | 15-assertion unit test for RollingBuffer |
+| `src/engine/WebGLViewport.jsx` | 687 | Expanded from 494 → 687 lines (+raycasting, +Plotly wiring) |
+
+**Affected Agents:** Code Engineer (delivered), Director (signed off)  
+**Rationale:** All Phase 4 architecture requirements (Sections 7.3, 9.1, 9.2) are satisfied. The scoping function pipeline is complete: click → raycast → resolve Node ID → extract O(m) kinematics → push to rolling buffers → render in Plotly at 10 Hz. All four architecture phases are now functionally complete.
+
+---
+
+### 2026-05-13 — Phase 5 Planning: Generalization & Topology
+
+**Action:** Issued Work Orders  
+**Details:** Following an analysis of the engine's limitations exposed by the 10x10 plate model, I have drafted Phase 5. The engine's current assumptions block 3-DOF frames, force 1-DOF beams/plates into the X-axis, and lack surface topology.
+
+Three new feature specs were generated:
+1. `FEAT-P5-001_MULTI_DOF_INGESTION.md` — Expand Data Ingestion Wizard to accept up to 3 modal shape columns.
+2. `FEAT-P5-002_AUTO_TOPOLOGY.md` — Automatically detect 1D vs 2D datasets. Draw `THREE.LineSegments` for beams and `THREE.Mesh` (via Delaunay) for plates. This closes the long-standing "Phase 2 gap."
+3. `FEAT-P5-003_SELECTABLE_AXIS.md` — Allow 1-DOF datasets to displace along X, Y, Z, or the Surface Normal (critical for out-of-plane bending vs. axial deformation).
+
+**Documentation Updated:**
+- `PROJECT_TRACKER.md` updated to include the Phase 5 feature table and dashboard status.
+
+**Affected Agents:** Code Engineer (assigned)  
+**Rationale:** These features transition the application from a rigid test harness into a generalized tool capable of visualizing beams, plates, and 3D spatial frames correctly.
+
+---

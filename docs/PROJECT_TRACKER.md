@@ -1,7 +1,7 @@
 # ModalViz — Project Tracker
-> **Last audited:** 2026-05-12  
+> **Last audited:** 2026-05-13  
 > **Reference architecture:** `FEA_Modal_Kinematics_Architecture.md`  
-> **Build status:** ✅ Compiles (Vite production build passes, 26 modules, 0 errors)
+> **Build status:** ✅ Compiles (Vite production build passes, 29 modules, 0 errors)
 
 ---
 
@@ -13,7 +13,7 @@
 | Bundler | Vite | 8.0.10 | ✅ |
 | 3D Engine | Three.js | 0.184.0 | ✅ |
 | CSV Parser | PapaParse | 5.5.3 | ✅ |
-| 2D Plotting | Plotly.js | — | ❌ Not installed |
+| 2D Plotting | Plotly.js (dist-min) | 3.5.1 | ✅ |
 | State Mgmt | Redux / Zustand | — | ❌ Not installed |
 
 ---
@@ -99,17 +99,42 @@
 
 | Feature | File | Status | Notes |
 |---|---|---|---|
-| Plotly.js dependency | `package.json` | ❌ Not installed | Not in dependencies |
-| `THREE.Raycaster` node picking | — | ❌ Not started | — |
-| Node ID resolution from ray hit | — | ❌ Not started | — |
-| Visual highlight of selected node | — | ❌ Not started | — |
-| Displacement vs. Time plot | — | ❌ Not started | — |
-| Velocity vs. Time plot | — | ❌ Not started | — |
-| Acceleration vs. Time plot | — | ❌ Not started | — |
-| Plotly streaming (`extendTraces`) | — | ❌ Not started | — |
-| Rolling-window oscilloscope sync | — | ❌ Not started | — |
+| Plotly.js dependency | `package.json` | ✅ Done | `plotly.js-dist-min@^3.5.1` installed |
+| `THREE.Raycaster` node picking | `WebGLViewport.jsx` | ✅ Done | Point cloud threshold 0.1, NDC conversion |
+| Click vs. drag discrimination | `WebGLViewport.jsx` | ✅ Done | 3px pointer distance threshold |
+| Node ID resolution from ray hit | `WebGLViewport.jsx` | ✅ Done | Maps vertex index → physical Node ID |
+| Visual highlight of selected node | `WebGLViewport.jsx` | ✅ Done | Green sphere (0x00ff88), opacity 0.8, tracks deformed position |
+| Deselection (click empty / clear button) | `WebGLViewport.jsx` | ✅ Done | Clicking empty space or ✕ button clears selection |
+| Selected node info badge | `WebGLViewport.jsx` | ✅ Done | Monospace badge with Node ID + DOF index |
+| `RollingBuffer` utility | `RollingBuffer.js` | ✅ Done | Float64Array circular buffer, capacity 500, 15 unit tests passing |
+| Scoped kinematic extraction in animate loop | `WebGLViewport.jsx` | ✅ Done | `getScopedKinematics(dofIndex)` per frame |
+| Plotly update throttling (~10 Hz) | `WebGLViewport.jsx` | ✅ Done | Every 6th frame via `frameCountRef` |
+| Displacement vs. Time plot | `KinematicPlots.jsx` | ✅ Done | Cyan line, dark theme, `Plotly.react()` |
+| Velocity vs. Time plot | `KinematicPlots.jsx` | ✅ Done | Orange line, dark theme |
+| Acceleration vs. Time plot | `KinematicPlots.jsx` | ✅ Done | Red line, dark theme |
+| Rolling-window oscilloscope sync | `WebGLViewport.jsx` | ✅ Done | 500-sample window via `RollingBuffer`, clears on stop/node change |
+| Timeline scrub → plot update | `WebGLViewport.jsx` | ✅ Done | Scrub handler pushes scoped kinematics to buffers |
+| Plotly cleanup on unmount | `KinematicPlots.jsx` | ✅ Done | `Plotly.purge()` in useEffect cleanup |
+| RollingBuffer unit tests | `testRollingBuffer.js` | ✅ Done | 15 assertions, all passing |
 
-**Phase 4 verdict: ❌ NOT STARTED** — No work has begun. Plotly.js is not even installed.
+**Phase 4 verdict: ✅ COMPLETE** — All raycasting, node selection, and 2D plotting features are implemented and functional.
+
+---
+
+### Phase 5: Generalization & Topology
+**Architecture goal:** Handle 1D/2D/3D datasets gracefully with correct topological rendering (lines/faces) and arbitrary degrees of freedom.
+
+| Feature | File | Status | Notes |
+|---|---|---|---|
+| Multi-DOF CSV Mapping | `DataIngestionWizard.jsx` | ❌ Not started | Map up to 3 modal shape columns (FEAT-P5-001) |
+| Multi-DOF Engine Init | `TestHarness2.jsx` | ❌ Not started | Initialize engine with 1 or 3 dofsPerNode (FEAT-P5-001) |
+| Dimensionality Heuristic | `WebGLViewport.jsx` | ❌ Not started | Detect 1D (beam) vs 2D (plate) via variance (FEAT-P5-002) |
+| 1D Auto-Topology (Lines) | `WebGLViewport.jsx` | ❌ Not started | Generate `THREE.LineSegments` for 1D datasets (FEAT-P5-002) |
+| 2D Auto-Topology (Faces) | `WebGLViewport.jsx` | ❌ Not started | Generate `THREE.Mesh` via Delaunay triangulation (FEAT-P5-002) |
+| Selectable Displ. Axis | `WebGLViewport.jsx` | ❌ Not started | UI to select X, Y, Z, or Normal for 1-DOF data (FEAT-P5-003) |
+| Normal-based deformation | `WebGLViewport.jsx` | ❌ Not started | Displace nodes along surface normal (FEAT-P5-003) |
+
+**Phase 5 verdict: ❌ NOT STARTED**
 
 ---
 
@@ -142,12 +167,12 @@
 | **Phase 1** | Data Ingestion & Math Engine | ✅ **Complete** |
 | **Phase 2** | 3D Engine Construction | ⚠️ **~90%** (point cloud only, no mesh faces) |
 | **Phase 3** | Animation, Contour, Transients | ✅ **Complete** |
-| **Phase 4** | Raycasting & 2D Plots | ❌ **0%** |
+| **Phase 4** | Raycasting & 2D Plots | ✅ **Complete** |
+| **Phase 5** | Generalization & Topology | ❌ **0%** |
 | **UI/UX** | Production layout & styling | ❌ **0%** |
 | **State Mgmt** | Redux / Zustand integration | ❌ **0%** |
 
 ### Next available work (ordered by dependency):
-1. **Phase 2 gap** — Add mesh face connectivity (requires input format decision: are faces in the CSV, or auto-generated via Delaunay?)
-2. **Phase 4** — Install Plotly.js + raycasting + 2D plot panels
-3. **UI/UX** — Replace test harnesses with a polished production layout
-4. **State Management** — Introduce Zustand/Redux for cross-component data flows
+1. **Phase 5** — Generalization & Topology (closes the Phase 2 gap, supports beams/plates/frames, selectable axes)
+2. **UI/UX** — Replace test harnesses with a polished production layout
+3. **State Management** — Introduce Zustand/Redux for cross-component data flows

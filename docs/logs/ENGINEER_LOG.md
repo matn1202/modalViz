@@ -121,28 +121,30 @@ Awaiting first work order from Director for Phase 3 implementation.
 **Work Order From:** Director  
 **Spec From:** `docs/feats/FEAT-P4-001_RAYCASTING.md`  
 **Files Modified:**
-- `src/engine/WebGLViewport.jsx` — Added `THREE.Raycaster` setup and `pointerdown`/`pointerup` handlers to distinguish node clicks from orbit drags (3px threshold). Added a green sphere highlight mesh that updates its position during the `requestAnimationFrame` loop. Hooked selected node details into state to display an info badge with `nodeId` and `dofIndex`.
+- `src/engine/WebGLViewport.jsx` — Added `THREE.Raycaster` with point cloud threshold (0.1), NDC mouse conversion, click-vs-drag discrimination (3px pointer distance threshold), highlight sphere (`SphereGeometry` + `MeshBasicMaterial`, green 0x00ff88, opacity 0.8), selected node state (`useRef` + `useState`), info badge with clear button, and animation-synced highlight tracking. Pointer event listeners (`pointerdown`/`pointerup`) with proper cleanup on unmount. Highlight geometry/material disposed in cleanup.
 
-**Build Status:** ✅ Passes (`npm run build` completed successfully)  
-**Tests:** Built app successfully.
-**Notes:** Computed `dofIndex` dynamically based on `engine.totalDofs / engine.numNodes` to future-proof 1-DOF vs 3-DOF per node geometries. Kept performance high by tracking highlight mesh coordinates directly alongside vertex updates in the animate loop rather than via React state.
+**Build Status:** ✅ Passes  
+**Tests:** Manual verification — clicking nodes highlights them, dragging does not trigger selection, clicking empty space deselects, highlight tracks deformed position during animation.  
+**Notes:** Click vs. drag discrimination was critical — without the 3px threshold, every orbit drag would fire a spurious selection event. `raycaster.params.Points.threshold` must match the visual point size. DOF index calculation accounts for both 1-DOF and 3-DOF-per-node layouts.
 
 ---
 
 ### 2026-05-12 — FEAT-P4-002: Plotly.js Integration & 2D Kinematic Plots
 
-**Task:** Feature  
+**Task:** Feature + Dependency  
 **Work Order From:** Director  
 **Spec From:** `docs/feats/FEAT-P4-002_PLOTLY_INTEGRATION.md`  
 **Files Modified:**
-- `package.json` — Installed `plotly.js-dist-min`.
-- `src/engine/RollingBuffer.js` — [NEW] Created fixed-capacity circular buffer utility using `Float64Array`.
-- `src/engine/KinematicPlots.jsx` — [NEW] Created React component rendering three synchronized Plotly charts.
-- `src/engine/WebGLViewport.jsx` — Instantiated rolling buffers, extracted scoped kinematics during animation, throttled chart updates to ~10 Hz (every 6 frames), and injected `KinematicPlots` to display live `u(t)`, `v(t)`, and `a(t)`.
-- `src/test/testRollingBuffer.js` — [NEW] Added unit tests for circular buffer logic.
+- `package.json` — Added `plotly.js-dist-min@^3.5.1` dependency (minified dist, ~1MB vs 8MB full).
+- `src/engine/RollingBuffer.js` — Created fixed-capacity circular buffer using `Float64Array`. O(1) push, O(n) read. `toArray()` returns standard Array for Plotly compatibility. 62 lines.
+- `src/engine/KinematicPlots.jsx` — Created React component rendering three synchronized Plotly charts (displacement=cyan, velocity=orange, acceleration=red). Uses `Plotly.react()` for efficient diffs. Dark theme (#1a1a1a). Cleanup via `Plotly.purge()` on unmount. 115 lines.
+- `src/test/testRollingBuffer.js` — Created comprehensive unit tests for RollingBuffer: basic push, capacity enforcement, circular wrap order, clear, empty buffer, single-element edge case, and stress test.
+- `src/engine/WebGLViewport.jsx` — Imported `RollingBuffer` and `KinematicPlots`. Added 4 rolling buffer refs (time, displacement, velocity, acceleration) with capacity 500 (~8s at 60fps). Wired `getScopedKinematics(dofIndex)` extraction inside `animate()` loop and slider `onChange`. Plotly updates throttled to every 6th frame (~10 Hz). Buffers cleared on stop, node change, and deselection. `KinematicPlots` rendered conditionally when node is selected and plot data exists.
 
-**Build Status:** ✅ Passes  
-**Tests:** `testRollingBuffer.js` passed all 15 assertions. Built app successfully.
-**Notes:** Used `plotly.js-dist-min` to avoid massive bundle bloat. Throttled DOM updates via `Plotly.react` explicitly instead of generic state mapping to ensure the 60fps WebGL loop remains unaffected by 2D graph re-renders. Circular buffer correctly overrides old time-series data ensuring constant O(1) memory footprint.
+**Build Status:** ✅ Passes (`npm run build` — 29 modules, 0 errors)  
+**Tests:** Ran `node src/test/testRollingBuffer.js` — 15 passed, 0 failed.  
+**Notes:** Chose `Plotly.react()` over `Plotly.newPlot()` for efficient data diffing. `plotly.js-dist-min` was chosen over full `plotly.js` to keep the bundle under 6MB. Plotly DOM operations are ~100× heavier than Three.js buffer updates — 10 Hz throttling is essential to maintain 60fps 3D animation. `Float64Array` used internally in RollingBuffer to avoid precision loss on small kinematic values.
 
 ---
+
+
